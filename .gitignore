@@ -1,0 +1,6 @@
+*.swp
+*.sqlite
+*.txt
+*.pem
+keys/
+ca/

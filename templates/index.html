@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="en">
+
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
+  <meta name="author" content="Yannik Schmidt">
+  <link rel="shortcut icon" href="/defaultFavicon.ico">
+
+  <title>Certificate Manager</title>
+
+  <!-- Bootstrap core CSS -->
+  <link href="https://cdn.atlantishq.de/static/css/bootstrap.min.css" rel="stylesheet">
+  <link href="/static/site.css" rel="stylesheet">
+  <script defer src="https://cdn.atlantishq.de/static/js/jquery.min.js"></script>
+  <script defer src="https://cdn.atlantishq.de/static/js/bootstrap.js"></script>
+
+</head>
+<body>
+    <div class="container">
+        <table id="tableMain" class="table table-striped table-bordered table-sm" cellspacing="0">
+            <thead>
+                <tr>
+                   <th class="th-sm font-weight-bold">Serial Number</th>
+                   <th class="th-sm font-weight-bold">CN</th>
+                   <th class="th-sm font-weight-bold">E-Mail</th>
+                   <th class="th-sm font-weight-bold">OU</th>
+               </tr>
+           </thead>
+           <tbody>
+               {% for cert in certificates %}
+                  <td>{{ cert.cert.get_serial_number() }}</td>
+                  <td>{{ cert.get("CN") }}</td>
+                  <td>{{ cert.get("emailAddress") }}</td>
+                  <td>{{ cert.get("OU") }}</td>
+		      </tr>
+		      {% endfor %}
+           </tbody>
+        </table> 
+    </div>
+</body>
+</html>
