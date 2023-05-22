@@ -1,0 +1,35 @@
+client
+dev athq_tun
+proto udp
+remote {{ server }} {{ port }}
+resolv-retry infinite
+nobind
+
+dev-type tun
+
+user nobody
+group nogroup
+
+persist-key
+persist-tun
+
+# redirect-gateway def1 ipv6
+
+<ca>
+{{ caCert }}
+</ca>
+
+
+<cert>
+{{ clientCert }}
+</cert>
+
+
+<key>
+{{ clientKey }}
+</key>
+
+remote-cert-tls server
+
+cipher AES-256-CBC
+auth SHA512

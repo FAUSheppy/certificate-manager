@@ -21,6 +21,9 @@ class Certificate:
         componentTupelList = list(map(lambda x: (x[0].decode(), x[1].decode()), 
                             self.cert.get_subject().get_components()))
         self.components = dict(componentTupelList)
+
+        # TODO
+        #self.privkey = OpenSSL.crypto.load_privatekey(OpenSSL.crypto.FILETYPE_PEM, content)
         
         self.permissions = {
             "nginx" : False,
@@ -32,11 +35,63 @@ class Certificate:
     def get(self, name):
         return self.components.get(name)
 
+    def generateP12(self, password):
+        p12 = OpenSSL.crypto.PKCS12()
+        #p12.set_privatekey(self.privkey)
+        p12.set_certificate(self.cert)
+        return p12.export(password)
+
+def getCertBySerial(serial):
+
+    # find correct certificate
+    certificates = loadCertificates()
+    certResults = list(filter(lambda x: x.cert.get_serial_number(), certificates))
+    if not certResults:
+        return None
+    return certResults[0]
+
 def loadCertificates():
     keysPath = app.config["KEYS_PATH"]
     certificates = [ Certificate(path) for path in 
                         glob.glob(keysPath + "/*.pem") ]
     return certificates
+
+@app.route("/openvpn")
+def ovpn():
+
+    serial = flask.request.args.get("serial")
+    cert = getCertBySerial(serial)
+
+    server = "atlantishq.de"
+    port = 7012
+    caCert = "TODO"
+    clientCert = "TODO"
+    clientKey = "TODO"
+
+    text = flask.render_template("ovpn.j2",
+                    server=server,
+                    port=port,
+                    caCert=caCert,
+                    clientCert=clientCert,
+                    clientKey=clientKey)
+
+    return flask.Response(text, mimetype="text/sml")
+
+@app.route("/pk12")
+def browserCert():
+
+    serial = flask.request.args.get("serial")
+    cert = getCertBySerial(serial)
+
+    server = "atlantishq.de"
+    port = 7012
+    caCert = "TODO"
+    clientCert = "TODO"
+    clientKey = "TODO"
+
+    r = flask.Response(cert.generateP12(b"TEST_TODO"), mimetype="application/octet-stream")
+    r.headers["Content-Disposition"] = 'attachment; filename="{}.pk12"'.format(cert.get("CN"))
+    return r
 
 @app.route("/modify")
 def modifyCert():
@@ -60,11 +115,9 @@ def certInfo():
         return (HTTP_BAD_ENTITY, "Missing Serial Number")
 
     # find correct certificate
-    certificates = loadCertificates()
-    certResults = list(filter(lambda x: x.cert.get_serial_number(), certificates))
-    if not certResults:
+    cert = getCertBySerial(serial)
+    if not cert:
         return (HTTP_NOT_FOUND, "No certificate found for serial {}".format(serial))
-    cert = certResults[0]
     
     return flask.render_template("cert_info.html", cert=cert)
 
