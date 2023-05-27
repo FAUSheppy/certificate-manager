@@ -195,6 +195,7 @@ def create_cert():
     L  = flask.request.args.get("L")  or app.config["L_DEFAULT"]
     O  = flask.request.args.get("O")  or app.config["O_DEFAULT"]
     OU = flask.request.args.get("OU") or app.config["OU_DEFAULT"]
+    emailAddress = flask.request.args.get("emailAddress")
 
     req = crypto.X509Req()
     req.get_subject().CN = CN
@@ -203,6 +204,7 @@ def create_cert():
     req.get_subject().localityName = L
     req.get_subject().organizationName = O
     req.get_subject().organizationalUnitName = OU
+    req.get_subject().emailAddress = emailAddress
 
     # Add CSR extensions
     base_constraints = ([
