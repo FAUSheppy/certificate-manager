@@ -75,15 +75,16 @@
 		  </div>
 		  <div class="row">
             <div class="vpn-info mt-4">
-                <input type=checkbox><i class="pl-2">Enable VPN Access</i></input>
+                <input {{ checked["vpn_enabled"] }} id="vpn_enabled" class="vpn-config" type=checkbox><i class="pl-2">Enable VPN Access (can only access server/first ip of subnet)</i></input>
                 <div class="vpn-info-conditional pl-3 mt-2">
-                    <input type=checkbox><i class="pl-2">Allow Server Access    </i></input><br>
-                    <input type=checkbox><i class="pl-2">Allow Internal Access  </i></input><br>
-                    <input type=checkbox><i class="pl-2">Allow Outgoing Traffic </i></input><br>
-                    <input type=checkbox><i class="pl-2">Allow access FROM VPN  </i></input><br>
+                    <input {{ checked["vpn_allow_internal"] }} id="vpn_allow_internal" class="vpn-config" type=checkbox><i class="pl-2">Allow Access to routed clients</i></input><br>
+                    <input {{ checked["vpn_allow_outgoing"] }} id="vpn_allow_outgoing" class="vpn-config" type=checkbox><i class="pl-2">Allow Outgoing Traffic via LB</i></input><br>
+                    <input {{ checked["vpn_routed"] }}         id="vpn_routed"         class="vpn-config" type=checkbox><i class="pl-2">Route this IP for other clients</i></input><br>
                 </div>
             </div>
 		  </div>
+          <script>
+          </script>
         </div>
     </div>
 </body>

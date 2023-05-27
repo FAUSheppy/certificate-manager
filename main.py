@@ -326,7 +326,15 @@ def cert_info():
         print(e, file=sys.stderr)
         return ("No certificate found for serial {}".format(serial), HTTP_NOT_FOUND)
 
-    return flask.render_template("cert_info.html", cert=cert)
+    # precompute cause jinja
+    checkedDict = dict()
+    checkedDict["vpn_enabled"]        = "checked" if cert.entry.vpn                else ""
+    checkedDict["vpn_routed"]         = "checked" if cert.entry.vpn_routed         else ""
+    checkedDict["vpn_allow_internal"] = "checked" if cert.entry.vpn_allow_internal else ""
+    checkedDict["vpn_allow_outgoing"] = "checked" if cert.entry.vpn_allow_outgoing else ""
+    print(checkedDict)
+
+    return flask.render_template("cert_info.html", cert=cert, checked=checkedDict)
 
 @app.route("/vpn")
 def vpn():
@@ -345,26 +353,20 @@ def vpn():
     vpn_allow_internal = flask.request.args.get("vpn_allow_internal")
 
     if vpn_enabled != None:
-        cert.entry.vpn = vpn_enabled
+        cert.entry.vpn = vpn_enabled == "true"
     if vpn_routed != None:
-        cert.entry.vpn_routed = vpn_routed
+        cert.entry.vpn_routed = vpn_routed == "true"
     if vpn_allow_outgoing != None:
-        cert.entry.vpn_allow_outgoing = vpn_allow_outgoing
+        cert.entry.vpn_allow_outgoing = vpn_allow_outgoing == "true"
     if vpn_allow_internal != None:
-        cert.entry.vpn_allow_internal = vpn_allow_internal
-
-    vpn_enabled = vpn_enabled == "true"
-    vpn_routed = vpn_routed == "true"
-    vpn_allow_outgoing = vpn_allow_outgoing == "true"
-    vpn_allow_internal = vpn_allow_internal == "true"
+        cert.entry.vpn_allow_internal = vpn_allow_internal == "true"
 
     vpn_config_dir_path = app.config["VPN_CONFIG_DIR_PATH"]
     vpn_user_config_path = os.path.join(vpn_config_dir_path, cert.entry.name)
     
-    if not vpn_enabled and not cert.entry.vpn:
+    if cert.entry.vpn:
         if os.path.isfile(vpn_user_config_path):
             os.remove(vpn_user_config_path)
-        return (EMPTY_STRING, HTTP_EMPTY)
     else:
 
         # 2-50    routed + outgoing + internal
@@ -399,7 +401,9 @@ def vpn():
             f.write("\n")
             f.write(ipv6_format)
 
-        return (EMPTY_STRING, HTTP_EMPTY)
+    db.session.merge(cert.entry)
+    db.session.commit()
+    return (EMPTY_STRING, HTTP_EMPTY)
     
 @app.route("/")
 def root():
