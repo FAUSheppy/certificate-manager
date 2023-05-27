@@ -22,6 +22,15 @@
 
         <button class="btn btn-primary">Revoke</button>
 
+        {% if cert.is_revoked() %}
+        <h2 style="color: red;">
+            REVOKED
+        </h2>
+        <b style="color: red">
+            (Reason: {{ cert.is_revoked().get_reason().decode("ascii") }})
+        </b>
+        {% endif %}
+
         <div class="info mt-4">
 		  <div class="row">
 			<div class="col-6">

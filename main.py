@@ -98,6 +98,9 @@ class Certificate:
         p12.set_certificate(self.cert)
         return p12.export(password)
 
+    def is_revoked(self):
+        return is_serial_revoked(self.serial)
+
 def load_missing_certificates():
 
     certs_path = os.path.dirname(CERT_FORMAT_PATH.format(None, None))
@@ -242,6 +245,30 @@ def create_cert():
     return (EMPTY_STRING, HTTP_EMPTY)
 
 
+def load_crl():
+
+    crl_path = app.config["CRL_PATH"]
+    if os.path.isfile(crl_path) and not os.stat(crl_path).st_size == 0:
+        with open(crl_path) as f:
+            crl = crypto.load_crl(crypto.FILETYPE_PEM, f.read())
+    else:
+        crl = crypto.CRL()
+
+    return crl
+
+def is_serial_revoked(serial, crl=None):
+
+    if not crl:
+        crl = load_crl()
+
+    revokation_list = crl.get_revoked()
+    serials_in_revokation_list = [ int(r.get_serial()) for r in  revokation_list ]
+
+    if int(serial) in serials_in_revokation_list:
+        return revokation_list[serials_in_revokation_list.index(int(serial))]
+    else:
+        return None
+
 @app.route("/revoke")
 def revoke():
 
@@ -249,19 +276,10 @@ def revoke():
     reason = flask.request.args.get("reason") or "unspecified"
 
     ca_key, ca_cert = load_ca()
+    crl = load_crl()
 
-    crl_path = app.config["CRL_PATH"]
-    if os.path.isfile(crl_path) and not os.stat(crl_path).st_size == 0:
-        with open(crl_path) as f:
-            crl = crypto.load_crl(crypto.FILETYPE_PEM, f.read())
-
-        # check if already revoked #
-        serials_in_revokation_list = [ int(r.get_serial()) for r in crl.get_revoked() ]
-        print(serials_in_revokation_list)
-        if int(serial) in serials_in_revokation_list:
-            return ("Serial {} is already revoked".format(serial), HTTP_BAD_ENTITY)
-    else:
-        crl = crypto.CRL()
+    if is_serial_revoked(serial, crl):
+        return ("Serial {} is already revoked".format(serial), HTTP_BAD_ENTITY)
 
     asn1_today = dump_asn1_timestring(datetime.datetime.now())
     crl.set_lastUpdate(asn1_today.encode("ascii"))
