@@ -9,6 +9,9 @@ import datetime
 from sqlalchemy import Column, Integer, String, Boolean, or_, and_, asc, desc
 from flask_sqlalchemy import SQLAlchemy
 
+from flask_wtf import FlaskForm, CSRFProtect
+from wtforms import StringField, SubmitField
+from wtforms.validators import DataRequired, Length
 
 EMPTY_STRING = ""
 HTTP_EMPTY = 204
@@ -34,8 +37,11 @@ class CertificateEntry(db.Model):
     name   = Column(String)
 
     vpn = Column(Boolean)
+    vpn_allow_internal = Column(Boolean)
     vpn_routed = Column(Boolean)
     vpn_allow_outgoing = Column(Boolean)
+
+    ip_in_block = Column(Integer)
 
     def load_privkey(self):
 
@@ -216,7 +222,9 @@ def create_cert():
     req.get_subject().localityName = L
     req.get_subject().organizationName = O
     req.get_subject().organizationalUnitName = OU
-    req.get_subject().emailAddress = emailAddress
+
+    if emailAddress:
+        req.get_subject().emailAddress = emailAddress
 
     # Add CSR extensions
     base_constraints = ([
@@ -320,6 +328,79 @@ def cert_info():
 
     return flask.render_template("cert_info.html", cert=cert)
 
+@app.route("/vpn")
+def vpn():
+
+    serial = flask.request.args.get("serial")
+    if not serial:
+        return ("Missing 'serial' URL argument", HTTP_BAD_ENTITY)
+    else:
+        serial = int(serial)
+
+    cert = Certificate(serial)
+
+    vpn_enabled = flask.request.args.get("vpn_enabled")
+    vpn_routed = flask.request.args.get("vpn_routed")
+    vpn_allow_outgoing = flask.request.args.get("vpn_allow_outgoing")
+    vpn_allow_internal = flask.request.args.get("vpn_allow_internal")
+
+    if vpn_enabled != None:
+        cert.entry.vpn = vpn_enabled
+    if vpn_routed != None:
+        cert.entry.vpn_routed = vpn_routed
+    if vpn_allow_outgoing != None:
+        cert.entry.vpn_allow_outgoing = vpn_allow_outgoing
+    if vpn_allow_internal != None:
+        cert.entry.vpn_allow_internal = vpn_allow_internal
+
+    vpn_enabled = vpn_enabled == "true"
+    vpn_routed = vpn_routed == "true"
+    vpn_allow_outgoing = vpn_allow_outgoing == "true"
+    vpn_allow_internal = vpn_allow_internal == "true"
+
+    vpn_config_dir_path = app.config["VPN_CONFIG_DIR_PATH"]
+    vpn_user_config_path = os.path.join(vpn_config_dir_path, cert.entry.name)
+    
+    if not vpn_enabled and not cert.entry.vpn:
+        if os.path.isfile(vpn_user_config_path):
+            os.remove(vpn_user_config_path)
+        return (EMPTY_STRING, HTTP_EMPTY)
+    else:
+
+        # 2-50    routed + outgoing + internal
+        # 51-100  routed
+        # 101-150 internal
+        # 151-200 internal + outgoing
+        # 201-250 only server & outgoing
+
+        if cert.entry.vpn_routed and cert.entry.vpn_allow_outgoing:
+            base_ip = 1
+        elif cert.entry.vpn_routed and not cert.entry.vpn_allow_internal:
+            base_ip = 51
+        elif cert.entry.vpn_allow_internal and not cert.entry.vpn_allow_outgoing:
+            base_ip = 101
+        elif cert.entry.vpn_allow_internal and cert.entry.vpn_allow_outgoing:
+            base_ip = 151
+        elif cert.entry.vpn_allow_outgoing and not cert.entry.vpn_allow_internal:
+            base_ip = 201
+        else:
+            base_ip = 101
+
+        if serial >= 50:
+            raise NotImplementedError("Currenly only 50 certificates are supported for VPN")
+       
+        ipv4_format = "ifconfig-push 172.16.1.{} 255.255.255.0".format(base_ip + serial)
+        ipv6_format = "ifconfig-ipv6-push fd2a:aef:608:1::{}/64".format(base_ip + serial + 1000)
+
+        print("Setting IP as {}".format(ipv4_format))
+
+        with open(vpn_user_config_path, "w") as f:
+            f.write(ipv4_format)
+            f.write("\n")
+            f.write(ipv6_format)
+
+        return (EMPTY_STRING, HTTP_EMPTY)
+    
 @app.route("/")
 def root():
 
@@ -352,5 +433,6 @@ if __name__ == "__main__":
         app.config["OU_DEFAULT"] = "Sheppy"
 
         app.config["LOAD_MISSING_CERTS_TO_DB"] = True
+        app.config["VPN_CONFIG_DIR_PATH"] = "./ccd/"
 
         app.run()
