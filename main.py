@@ -23,6 +23,9 @@ app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
 app.config["SQLALCHEMY_DATABASE_URI"] = "sqlite:///sqlite.db"
 db = SQLAlchemy(app)
 
+def dump_asn1_timestring(dt):
+    return dt.strftime("%Y%m%d%H%M%SZ")
+
 class CertificateEntry(db.Model):
 
     __tablename__ = "certificates"
@@ -106,8 +109,8 @@ def load_missing_certificates():
             serial = cert.get_serial_number()
             cn = cert.get_subject().get_components()[0].decode()
 
-            if (not os.path.is_file(CERT_FORMAT_PATH.format(cn, serial)) or
-               not os.path.is_file(KEY_FORMAT_PATH(cn, serial))):
+            if (not os.path.isfile(CERT_FORMAT_PATH.format(cn, serial)) or
+               not os.path.isfile(KEY_FORMAT_PATH(cn, serial))):
                 print("Bad naming scheme '{}' (skipping..)".format(path), file=sys.stderr)
 
             try:
@@ -130,7 +133,7 @@ def ovpn():
     proto = app.config["VPN_PROTO"]
 
     with open(app.config["CA_CERT_PATH"]) as f:
-        caCert = f.read()
+        ca_cert = f.read()
 
     clientCert = crypto.dump_certificate(crypto.FILETYPE_PEM, cert.cert)
     clientKey = crypto.dump_privatekey(crypto.FILETYPE_PEM, cert.privkey)
@@ -139,7 +142,7 @@ def ovpn():
                     server=server,
                     port=port,
                     proto=proto,
-                    caCert=caCert.strip("\n"),
+                    ca_cert=ca_cert.strip("\n"),
                     clientCert=str(clientCert, "ascii").strip("\n"),
                     clientKey=str(clientKey, "ascii").strip("\n"))
 
@@ -156,7 +159,7 @@ def browser_cert():
 
     return r
 
-def sign_certificate(caCert, caKey, csr):
+def sign_certificate(ca_cert, ca_key, csr):
 
     today = datetime.datetime.today()
     expiry_in = int(datetime.timedelta(days=300).total_seconds())
@@ -165,12 +168,22 @@ def sign_certificate(caCert, caKey, csr):
     cert.set_serial_number(get_min_serial())
     cert.gmtime_adj_notBefore(0)
     cert.gmtime_adj_notAfter(expiry_in)
-    cert.set_issuer(caCert.get_subject())
+    cert.set_issuer(ca_cert.get_subject())
     cert.set_subject(csr.get_subject())
     cert.set_pubkey(csr.get_pubkey())
-    cert.sign(caKey, 'sha256')
+    cert.sign(ca_key, 'sha256')
 
     return cert
+
+def load_ca():
+
+    with open(app.config["CA_KEY_PATH"]) as f:
+        ca_key = crypto.load_privatekey(crypto.FILETYPE_PEM, f.read())
+
+    with open(app.config["CA_CERT_PATH"]) as f:
+        ca_cert = crypto.load_certificate(crypto.FILETYPE_PEM, f.read())
+
+    return (ca_key, ca_cert)
 
 @app.route("/create")
 def create_cert():
@@ -178,11 +191,7 @@ def create_cert():
     if not flask.request.args.get("CN"):
         return ("Missing CN argument for certicate creation", HTTP_BAD_ENTITY)
 
-    with open(app.config["CA_KEY_PATH"]) as f:
-        caKey = crypto.load_privatekey(crypto.FILETYPE_PEM, f.read())
-
-    with open(app.config["CA_CERT_PATH"]) as f:
-        caCert = crypto.load_certificate(crypto.FILETYPE_PEM, f.read())
+    ca_key, ca_cert = load_ca()
 
     # create a key pair
     key = crypto.PKey()
@@ -219,7 +228,7 @@ def create_cert():
     req.set_pubkey(key)
 
     # sign the certificate #
-    cert = sign_certificate(caCert, caKey, req)
+    cert = sign_certificate(ca_cert, ca_key, req)
 
     with open(CERT_FORMAT_PATH.format(CN, cert.get_serial_number()), "wt") as f:
         f.write(str(crypto.dump_certificate(crypto.FILETYPE_PEM, cert), "ascii"))
@@ -234,11 +243,47 @@ def create_cert():
 
 
 @app.route("/revoke")
-def modify_cert():
+def revoke():
 
     serial = flask.request.args.get("serial")
-    # Openssl.crypto.load_crl
-    basePath = app.config["BASE_PATH"]
+    reason = flask.request.args.get("reason") or "unspecified"
+
+    ca_key, ca_cert = load_ca()
+
+    crl_path = app.config["CRL_PATH"]
+    if os.path.isfile(crl_path) and not os.stat(crl_path).st_size == 0:
+        with open(crl_path) as f:
+            crl = crypto.load_crl(crypto.FILETYPE_PEM, f.read())
+
+        # check if already revoked #
+        serials_in_revokation_list = [ int(r.get_serial()) for r in crl.get_revoked() ]
+        print(serials_in_revokation_list)
+        if int(serial) in serials_in_revokation_list:
+            return ("Serial {} is already revoked".format(serial), HTTP_BAD_ENTITY)
+    else:
+        crl = crypto.CRL()
+
+    asn1_today = dump_asn1_timestring(datetime.datetime.now())
+    crl.set_lastUpdate(asn1_today.encode("ascii"))
+
+    # build revokation #
+    revokation = crypto.Revoked()
+    revokation.set_serial(str(serial).encode("ascii"))
+    revokation.set_rev_date(asn1_today.encode("ascii"))
+
+    try:
+        revokation.set_reason(reason.encode("ascii"))
+    except ValueError:
+        return ("{} is not a valid revokation reason in x509".format(reason), HTTP_BAD_ENTITY)
+
+    # add to revokation to crl & sign #
+    crl.add_revoked(revokation)
+    crl.sign(ca_cert, ca_key, b"sha256")
+
+    with open(crl_path, "wb") as f:
+        f.write(crypto.dump_crl(crypto.FILETYPE_PEM, crl))
+
+    return (EMPTY_STRING, HTTP_EMPTY)
 
 @app.route("/cert-info")
 def cert_info():
@@ -273,6 +318,7 @@ def init():
 
 if __name__ == "__main__":
 
+        app.config["CRL_PATH"] = "crl.pem"
         app.config["KEYS_PATH"] = "./keys"
         app.config["CA_KEY_PATH"] = "./keys/ca.key"
         app.config["CA_CERT_PATH"] = "./keys/ca.crt"
