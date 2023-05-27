@@ -18,21 +18,20 @@ CERT_FORMAT_PATH = "./keys/{}_{}.crt"
 KEY_FORMAT_PATH = "./keys/{}_{}.key"
 
 app = flask.Flask("Certificate Manager")
+app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
 app.config["SQLALCHEMY_DATABASE_URI"] = "sqlite:///sqlite.db"
 db = SQLAlchemy(app)
 
 class CertificateEntry(db.Model):
 
-    def __init__(self):
+    __tablename__ = "certificates"
 
-        __tablename__ = "certificates"
+    serial = Column(Integer, primary_key=True)
+    name   = Column(String, primary_key=True)
 
-        self.serial = Column(Integer, primary_key=True)
-        self.name   = Column(String)
-
-        self.vpn = Column(Boolean)
-        self.vpn_routed = Column(Boolean)
-        self.vpn_allow_outgoing = Column(Boolean)
+    vpn = Column(Boolean)
+    vpn_routed = Column(Boolean)
+    vpn_allow_outgoing = Column(Boolean)
 
     def load_privkey(self):
 
@@ -49,7 +48,6 @@ def certEntryBySerial(serial):
 class Certificate:
 
     def __init__(self, path, serial=None):
-       
 
         if serial:
             print("Loading by serial.. ({})".format(serial))
