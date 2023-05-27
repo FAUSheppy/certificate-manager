@@ -1,12 +1,21 @@
-import OpenSSL.crypto
+import OpenSSL
+from OpenSSL import crypto
 import glob
 import flask
 import os
+import datetime
 
 HTTP_BAD_ENTITY = 422
 HTTP_NOT_FOUND = 404
 
 app = flask.Flask("Certificate Manager")
+
+class CertificateEntry():
+
+        def __init__(self):
+            pass
+            # VPN options
+
 
 class Certificate:
 
@@ -17,13 +26,13 @@ class Certificate:
         with open(path) as f:
             content = f.read()
 
-        self.cert = OpenSSL.crypto.load_certificate(OpenSSL.crypto.FILETYPE_PEM, content)
+        self.cert = crypto.load_certificate(crypto.FILETYPE_PEM, content)
         componentTupelList = list(map(lambda x: (x[0].decode(), x[1].decode()), 
                             self.cert.get_subject().get_components()))
         self.components = dict(componentTupelList)
 
         # TODO
-        #self.privkey = OpenSSL.crypto.load_privatekey(OpenSSL.crypto.FILETYPE_PEM, content)
+        #self.privkey = crypto.load_privatekey(crypto.FILETYPE_PEM, content)
         
         self.permissions = {
             "nginx" : False,
@@ -36,7 +45,7 @@ class Certificate:
         return self.components.get(name)
 
     def generateP12(self, password):
-        p12 = OpenSSL.crypto.PKCS12()
+        p12 = crypto.PKCS12()
         #p12.set_privatekey(self.privkey)
         p12.set_certificate(self.cert)
         return p12.export(password)
@@ -93,17 +102,83 @@ def browserCert():
     r.headers["Content-Disposition"] = 'attachment; filename="{}.pk12"'.format(cert.get("CN"))
     return r
 
-@app.route("/modify")
+def signCertificate(caCert, caKey, csr):
+
+    today = datetime.datetime.today()
+    valid_until = today + datetime.timedelta(days=300)
+    serial = 0
+
+    cert = crypto.X509()
+    cert.set_serial_number(serial)
+    cert.gmtime_adj_notBefore(0)
+    cert.gmtime_adj_notAfter(300)
+    cert.set_issuer(caCert.get_subject())
+    cert.set_subject(csr.get_subject())
+    cert.set_pubkey(csr.get_pubkey())
+    cert.sign(caKey, 'sha256')
+
+    return cert
+
+@app.route("/create")
+def createCert():
+
+    caCert = None
+    caKey = None
+
+    with open(app.config["CA_KEY_PATH"]) as f:
+        caKey = crypto.load_privatekey(crypto.FILETYPE_PEM, f.read())
+
+    with open(app.config["CA_CERT_PATH"]) as f:
+        caCert = crypto.load_certificate(crypto.FILETYPE_PEM, f.read())
+
+    # create a key pair
+    key = crypto.PKey()
+    key.generate_key(crypto.TYPE_RSA, 1024)
+
+    # create a CSR
+    CN = "test"
+    C = "DE"
+    ST = "test"
+    L = "test"
+    O = "test"
+    OU = "test"
+
+    req = crypto.X509Req()
+    req.get_subject().CN = CN
+    req.get_subject().countryName = C
+    req.get_subject().stateOrProvinceName = ST
+    req.get_subject().localityName = L
+    req.get_subject().organizationName = O
+    req.get_subject().organizationalUnitName = OU
+
+    # Add CSR extensions
+    base_constraints = ([
+        crypto.X509Extension(b"keyUsage", False,
+                b"Digital Signature, Non Repudiation, Key Encipherment"),
+        crypto.X509Extension(b"basicConstraints", False, b"CA:FALSE"),
+    ])
+    x509_extensions = base_constraints
+    req.add_extensions(x509_extensions)
+
+    # set CSR key
+    req.set_pubkey(key)
+
+    # sign the certificate #
+    cert = signCertificate(caCert, caKey, req)
+
+    open("test.cert", "wt").write(
+        str(crypto.dump_certificate(crypto.FILETYPE_PEM, cert), "ascii"))
+    open("test.key", "wt").write(
+        str(crypto.dump_privatekey(crypto.FILETYPE_PEM, key), "ascii"))
+
+    return ("", 204)
+
+
+@app.route("/revoke")
 def modifyCert():
 
     serial = flask.request.args.get("serial")
-    action = flask.request.args.get("action")
-
-    if action == "create":
-        pass
-    elif action == "revoke":
-        pass
-
+    # Openssl.crypto.load_crl
     basePath = app.config["BASE_PATH"]
 
 @app.route("/cert-info")
@@ -128,4 +203,6 @@ def root():
 
 if __name__ == "__main__":
         app.config["KEYS_PATH"] = "./keys"
+        app.config["CA_KEY_PATH"] = "./keys/ca.key"
+        app.config["CA_CERT_PATH"] = "./keys/ca.crt"
         app.run()
