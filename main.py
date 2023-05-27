@@ -5,23 +5,59 @@ import flask
 import os
 import datetime
 
+from sqlalchemy import Column, Integer, String, Boolean, or_, and_
+from flask_sqlalchemy import SQLAlchemy
+
+
+EMPTY_STRING = ""
+HTTP_EMPTY = 204
 HTTP_BAD_ENTITY = 422
 HTTP_NOT_FOUND = 404
 
+CERT_FORMAT_PATH = "./keys/{}_{}.crt"
+KEY_FORMAT_PATH = "./keys/{}_{}.key"
+
 app = flask.Flask("Certificate Manager")
+app.config["SQLALCHEMY_DATABASE_URI"] = "sqlite:///sqlite.db"
+db = SQLAlchemy(app)
 
-class CertificateEntry():
+class CertificateEntry(db.Model):
 
-        def __init__(self):
-            pass
-            # VPN options
+    def __init__(self):
 
+        __tablename__ = "certificates"
+
+        self.serial = Column(Integer, primary_key=True)
+        self.name   = Column(String)
+
+        self.vpn = Column(Boolean)
+        self.vpn_routed = Column(Boolean)
+        self.vpn_allow_outgoing = Column(Boolean)
+
+    def load_privkey(self):
+
+        with open(KEY_FORMAT_PATH.format(self.name, self.serial)) as f:
+            return crypto.load_privatekey(crypto.FILETYPE_PEM, f.read())
+
+def certEntryBySerial(serial):
+
+    result = db.query(CertificateEntry).filter(CertificateEntry.serial == serial).first()
+    if not result:
+        raise ValueError("No Certificate for serial {} - won't load".format(serial))
+    return result
 
 class Certificate:
 
-    def __init__(self, path):
+    def __init__(self, path, serial=None):
        
-        print("Loading: {}".format(path))
+
+        if serial:
+            print("Loading by serial.. ({})".format(serial))
+            self.entry = certEntryBySerial(serial)
+            path = CERT_FORMAT_PATH.format(self.entry.name, serial)
+        else:
+            print("Loading: {}".format(path))
+
         content = None
         with open(path) as f:
             content = f.read()
@@ -31,8 +67,11 @@ class Certificate:
                             self.cert.get_subject().get_components()))
         self.components = dict(componentTupelList)
 
-        # TODO
-        #self.privkey = crypto.load_privatekey(crypto.FILETYPE_PEM, content)
+        # load entry late if loaded by path #
+        if not serial:
+            self.entry = certEntryBySerial(self.cert.get_serial())
+
+        self.privkey = self.entry.load_privkey()
         
         self.permissions = {
             "nginx" : False,
@@ -46,7 +85,7 @@ class Certificate:
 
     def generateP12(self, password):
         p12 = crypto.PKCS12()
-        #p12.set_privatekey(self.privkey)
+        p12.set_privatekey(self.privkey)
         p12.set_certificate(self.cert)
         return p12.export(password)
 
@@ -71,11 +110,14 @@ def ovpn():
     serial = flask.request.args.get("serial")
     cert = getCertBySerial(serial)
 
-    server = "atlantishq.de"
-    port = 7012
-    caCert = "TODO"
-    clientCert = "TODO"
-    clientKey = "TODO"
+    server = app.config["VPN_SERVER"]
+    port = app.config["VPN_PORT"]
+
+    with open(app.config["CA_CERT_PATH"]) as f:
+        caCert = f.read()
+
+    clientCert = cert.cert.dump_certificate(crypto.FILETYPE_PEM)
+    clientKey = cert.privkey.dump_privatekey(crypto.FILETYPE_PEM)
 
     text = flask.render_template("ovpn.j2",
                     server=server,
@@ -84,19 +126,13 @@ def ovpn():
                     clientCert=clientCert,
                     clientKey=clientKey)
 
-    return flask.Response(text, mimetype="text/sml")
+    return flask.Response(text, mimetype="text/xml")
 
 @app.route("/pk12")
 def browserCert():
 
     serial = flask.request.args.get("serial")
     cert = getCertBySerial(serial)
-
-    server = "atlantishq.de"
-    port = 7012
-    caCert = "TODO"
-    clientCert = "TODO"
-    clientKey = "TODO"
 
     r = flask.Response(cert.generateP12(b"TEST_TODO"), mimetype="application/octet-stream")
     r.headers["Content-Disposition"] = 'attachment; filename="{}.pk12"'.format(cert.get("CN"))
@@ -122,8 +158,8 @@ def signCertificate(caCert, caKey, csr):
 @app.route("/create")
 def createCert():
 
-    caCert = None
-    caKey = None
+    if not flask.request.args.get("CN"):
+        return ("Missing CN argument for certicate creation", HTTP_BAD_ENTITY)
 
     with open(app.config["CA_KEY_PATH"]) as f:
         caKey = crypto.load_privatekey(crypto.FILETYPE_PEM, f.read())
@@ -136,12 +172,12 @@ def createCert():
     key.generate_key(crypto.TYPE_RSA, 1024)
 
     # create a CSR
-    CN = "test"
-    C = "DE"
-    ST = "test"
-    L = "test"
-    O = "test"
-    OU = "test"
+    CN = flask.request.args.get("CN")
+    C  = flask.request.args.get("DE") or app.config["C_DEFAULT"]
+    ST = flask.request.args.get("ST") or app.config["ST_DEFAULT"]
+    L  = flask.request.args("L")      or app.config["L_DEFAULT"]
+    O  = flask.request.args("O")      or app.config["O_DEFAULT"]
+    OU = flask.request.args("OU")     or app.config["OU_DEFAULT"]
 
     req = crypto.X509Req()
     req.get_subject().CN = CN
@@ -166,12 +202,12 @@ def createCert():
     # sign the certificate #
     cert = signCertificate(caCert, caKey, req)
 
-    open("test.cert", "wt").write(
+    open(CERT_FORMAT_PATH.format(CN, cert.get_serial()), "wt").write(
         str(crypto.dump_certificate(crypto.FILETYPE_PEM, cert), "ascii"))
-    open("test.key", "wt").write(
+    open(KEY_FORMAT_PATH.format(CN, cert.get_serial()), "wt").write(
         str(crypto.dump_privatekey(crypto.FILETYPE_PEM, key), "ascii"))
 
-    return ("", 204)
+    return (EMPTY_STRING, HTTP_EMPTY)
 
 
 @app.route("/revoke")
@@ -201,8 +237,23 @@ def root():
     certificates = loadCertificates()
     return flask.render_template("index.html", certificates=certificates)
 
+@app.before_first_request
+def init():
+    db.create_all()
+
 if __name__ == "__main__":
+
         app.config["KEYS_PATH"] = "./keys"
         app.config["CA_KEY_PATH"] = "./keys/ca.key"
         app.config["CA_CERT_PATH"] = "./keys/ca.crt"
+
+        app.config["VPN_SERVER"] = "atlantishq.de"
+        app.config["VPN_PORT"] = 7012
+
+        app.config["C_DEFAULT"] = "DE"
+        app.config["L_DEFAULT"] = "Bavaria"
+        app.config["ST_DEFAULT"] = "Erlangen"
+        app.config["O_DEFAULT"] = "AtlantisHQ"
+        app.config["OU_DEFAULT"] = "Sheppy"
+
         app.run()
