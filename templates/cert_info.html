@@ -81,15 +81,11 @@
 			  </div>
               {% for key, value in cert.permissions.items() %}
               <div class="row">
-			  	<div class="col">
+			  	<div class="col-3">
 			  		{{ key }}
 			  	</div>
 			  	<div class="col">
-			  		{% if value %}
-                      <i style="color: darkgreen;">Yes</i>
-			  		{% else %}
-                      <i style="color: red;">No</i>
-			  		{% endif %}
+                    <i class="small" style="color: darkgreen;">..via {{ value }}</i>
 				</div>
 			  </div>
               {% endfor %}

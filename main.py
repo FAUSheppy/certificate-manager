@@ -1,4 +1,5 @@
 import OpenSSL
+import re
 from OpenSSL import crypto
 import glob
 import flask
@@ -30,6 +31,33 @@ CSRFProtect(app)
 app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
 app.config["SQLALCHEMY_DATABASE_URI"] = "sqlite:///sqlite.db"
 db = SQLAlchemy(app)
+
+def parse_nginx_maps(subject):
+
+    subjectString = "".join("/{}={}".format(name.decode(), value.decode())
+                        for name, value in subject.get_components())
+
+    permissions = dict()
+
+    if not os.path.isfile(app.config["NGINX_CERT_MAPS_LOCATION"]):
+        return dict()
+
+    with open(app.config["NGINX_CERT_MAPS_LOCATION"]) as f:
+        current_group = None
+        for l in f:
+            if l.startswith("map $"):
+                ignore, s_dn_var, group_var_name, bracket = l.split(" ")
+                empty, group_name = group_var_name.split("$allow_group_")
+                current_group = group_name
+            if "true;" in l:
+                clean = l.strip()
+                regexString, ignore = clean.split(" ")
+                regexString = regexString.replace("~", "") # remove ~ indicator
+                result = re.search(regexString, subjectString)
+                if result:
+                    permissions.update({ group_name : regexString })
+
+    return permissions
 
 def create_ca():
 
@@ -175,8 +203,7 @@ class Certificate:
             "nginx" : False,
         }
 
-        if "allow-nginx" in self.get("CN"):
-            self.permissions["nginx"] = True
+        self.permissions = parse_nginx_maps(self.cert.get_subject())
 
     def get(self, name):
         return self.components.get(name)
@@ -252,7 +279,7 @@ def browser_cert():
     cert = Certificate(serial)
 
     r = flask.Response(cert.generateP12(b"TEST_TODO"), mimetype="application/octet-stream")
-    r.headers["Content-Disposition"] = 'attachment; filename="{}.pk12"'.format(cert.get("CN"))
+    r.headers["Content-Disposition"] = 'attachment; filename="{}.pfx"'.format(cert.get("CN"))
 
     return r
 
@@ -554,6 +581,8 @@ if __name__ == "__main__":
         app.config["VPN_MANAGEMENT_HOST"] = "localhost"
         app.config["VPN_MANAGEMENT_PORT"] = 23000
         app.config["VPN_MANAGEMENT_PASSWORD"] = ""
+
+        app.config["NGINX_CERT_MAPS_LOCATION"] = "./nginx_maps.j2"
 
         app.config["SECRET_KEY"] = secrets.token_urlsafe(64)
 
