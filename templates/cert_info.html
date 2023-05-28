@@ -17,6 +17,12 @@
 
 </head>
 <body>
+	<style>
+		.disabled{
+    		pointer-events: none;
+    		opacity: 0.4;
+		}
+	</style>
     <h3 class="cn">Cert: {{ cert.get("CN") }}</h3>
     <div class="container">
 
@@ -76,7 +82,7 @@
 		  <div class="row">
             <div class="vpn-info mt-4">
                 <input {{ checked["vpn_enabled"] }} id="vpn_enabled" class="vpn-config" type=checkbox><i class="pl-2">Enable VPN Access (can only access server/first ip of subnet)</i></input>
-                <div class="vpn-info-conditional pl-3 mt-2">
+                <div id="vpn-conditional-container" class="vpn-info-conditional pl-3 mt-2">
                     <input {{ checked["vpn_allow_internal"] }} id="vpn_allow_internal" class="vpn-config" type=checkbox><i class="pl-2">Allow Access to routed clients</i></input><br>
                     <input {{ checked["vpn_allow_outgoing"] }} id="vpn_allow_outgoing" class="vpn-config" type=checkbox><i class="pl-2">Allow Outgoing Traffic via LB</i></input><br>
                     <input {{ checked["vpn_routed"] }}         id="vpn_routed"         class="vpn-config" type=checkbox><i class="pl-2">Route this IP for other clients</i></input><br>
@@ -84,6 +90,27 @@
             </div>
 		  </div>
           <script>
+            let boxes = Array.from(document.getElementsByClassName("vpn-config"))
+            function vpn_update(){
+				const updateUrl = new URL(window.location.origin + "/vpn")
+				updateUrl.searchParams.append("serial", {{ cert.serial }})
+                boxes.forEach(e => updateUrl.searchParams.append(e.id, e.checked))
+				fetch(updateUrl)
+            }
+            boxes.forEach(e => e.addEventListener("change", vpn_update))
+
+			/* gray out rest if no VPN */
+			function disabled_state(){
+				checked = document.getElementById("vpn_enabled").checked
+				container = document.getElementById("vpn-conditional-container")
+				if(!checked){
+					container.classList.add("disabled")
+				}else{
+					container.classList.remove("disabled")
+				}
+			}
+			main = document.getElementById("vpn_enabled")
+			main.addEventListener("change", disabled_state)
           </script>
         </div>
     </div>
