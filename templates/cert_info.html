@@ -23,8 +23,9 @@
     		opacity: 0.4;
 		}
 	</style>
-    <h3 class="cn">Cert: {{ cert.get("CN") }}</h3>
     <div class="container">
+
+    	<h3 class="cn">{{ cert.get("CN") }}</h3>
 
 
         {% if cert.is_revoked() %}
@@ -35,7 +36,18 @@
             (Reason: {{ cert.is_revoked().get_reason().decode("ascii") }})
         </b>
         {% else %}
-        <button class="btn btn-primary">Revoke</button>
+        <script>
+			function revoke_and_reload(){
+				a = window.confirm("You sure you want to non-reversebly revoke this certificate?")
+				if(a){
+                	fetch(window.location.origin + '/revoke?serial={{ cert.serial }}')
+                	window.location.reload()
+				}
+			}
+		</script>
+        <button class="btn btn-primary" onclick="revoke_and_reload()">
+            Revoke
+        </button>
         {% endif %}
 
         <div class="info mt-4">
