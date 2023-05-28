@@ -107,6 +107,11 @@ class Certificate:
     def is_revoked(self):
         return is_serial_revoked(self.serial)
 
+    def is_revoked_js(self):
+        '''Return a true/false string for javascript templates'''
+        return "true" if is_serial_revoked(self.serial) else "false"
+
+
 def load_missing_certificates():
 
     certs_path = os.path.dirname(CERT_FORMAT_PATH.format(None, None))
@@ -332,7 +337,6 @@ def cert_info():
     checkedDict["vpn_routed"]         = "checked" if cert.entry.vpn_routed         else ""
     checkedDict["vpn_allow_internal"] = "checked" if cert.entry.vpn_allow_internal else ""
     checkedDict["vpn_allow_outgoing"] = "checked" if cert.entry.vpn_allow_outgoing else ""
-    print(checkedDict)
 
     return flask.render_template("cert_info.html", cert=cert, checked=checkedDict)
 

@@ -117,12 +117,18 @@
 
 			/* gray out rest if no VPN */
 			function disabled_state(){
-				checked = document.getElementById("vpn_enabled").checked
+				mainEl  = document.getElementById("vpn_enabled")
+				checked = mainEl.checked
 				container = document.getElementById("vpn-conditional-container")
-				if(!checked){
+                if(!checked || {{ cert.is_revoked_js() }}){
 					container.classList.add("disabled")
 				}else{
 					container.classList.remove("disabled")
+				}
+
+				/* if revoked also disable main btn */
+				if({{ cert.is_revoked_js() }}){
+					mainEl.parentElement.classList.add("disabled")
 				}
 			}
 			main = document.getElementById("vpn_enabled")
