@@ -270,15 +270,18 @@ def ovpn():
                     clientCert=str(clientCert, "ascii").strip("\n"),
                     clientKey=str(clientKey, "ascii").strip("\n"))
 
-    return flask.Response(text, mimetype="text/xml")
+    r = flask.Response(text, mimetype="application/octet-stream")
+    r.headers["Content-Disposition"] = 'attachment; filename="{}.ovpn"'.format(cert.get("CN"))
+    return r
 
 @app.route("/pk12")
 def browser_cert():
 
     serial = flask.request.args.get("serial")
+    tmp_pw = flask.request.args.get("tmp_pw").encode("ascii")
     cert = Certificate(serial)
 
-    r = flask.Response(cert.generateP12(b"TEST_TODO"), mimetype="application/octet-stream")
+    r = flask.Response(cert.generateP12(tmp_pw), mimetype="application/octet-stream")
     r.headers["Content-Disposition"] = 'attachment; filename="{}.pfx"'.format(cert.get("CN"))
 
     return r
