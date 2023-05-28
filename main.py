@@ -364,7 +364,7 @@ def vpn():
     vpn_config_dir_path = app.config["VPN_CONFIG_DIR_PATH"]
     vpn_user_config_path = os.path.join(vpn_config_dir_path, cert.entry.name)
     
-    if cert.entry.vpn:
+    if not cert.entry.vpn:
         if os.path.isfile(vpn_user_config_path):
             os.remove(vpn_user_config_path)
     else:
