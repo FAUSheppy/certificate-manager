@@ -269,7 +269,7 @@ def is_serial_revoked(serial, crl=None):
     if not crl:
         crl = load_crl()
 
-    revokation_list = crl.get_revoked()
+    revokation_list = crl.get_revoked() or []
     serials_in_revokation_list = [ int(r.get_serial()) for r in  revokation_list ]
 
     if int(serial) in serials_in_revokation_list:
@@ -306,7 +306,7 @@ def revoke():
     crl.add_revoked(revokation)
     crl.sign(ca_cert, ca_key, b"sha256")
 
-    with open(crl_path, "wb") as f:
+    with open(app.config["CRL_PATH"], "wb") as f:
         f.write(crypto.dump_crl(crypto.FILETYPE_PEM, crl))
 
     return (EMPTY_STRING, HTTP_EMPTY)
