@@ -1,7 +1,6 @@
 *.swp
 *.db
 *.sqlite
-*.txt
 *.key
 *.cert
 *.crt
