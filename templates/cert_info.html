@@ -127,6 +127,9 @@
 			}
 			main = document.getElementById("vpn_enabled")
 			main.addEventListener("change", disabled_state)
+
+            /* run gray state check once */
+            disabled_state()
           </script>
         </div>
     </div>
