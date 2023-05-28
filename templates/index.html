@@ -17,7 +17,7 @@
 
 </head>
 <body>
-    <div class="container">
+    <div class="container mt-5">
         <table id="tableMain" class="table table-striped table-bordered table-sm" cellspacing="0">
             <thead>
                 <tr>
@@ -29,14 +29,20 @@
            </thead>
            <tbody>
                {% for cert in certificates %}
+               <tr id="{{ cert.serial }}" class="cert-row" >
                   <td>{{ cert.cert.get_serial_number() }}</td>
                   <td>{{ cert.get("CN") }}</td>
                   <td>{{ cert.get("emailAddress") }}</td>
                   <td>{{ cert.get("OU") }}</td>
-		      </tr>
-		      {% endfor %}
+		       </tr>
+		       {% endfor %}
            </tbody>
         </table> 
     </div>
+	<script>
+		let rows = Array.from(document.getElementsByClassName("cert-row"))
+		rows.forEach(r => r.addEventListener("click",
+				(r) => window.location.href="/cert-info?serial=" + r.srcElement.parentElement.id))
+	</script>
 </body>
 </html>
