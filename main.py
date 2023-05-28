@@ -13,6 +13,8 @@ from flask_wtf import FlaskForm, CSRFProtect
 from wtforms import StringField, SubmitField
 from wtforms.validators import DataRequired, Length
 
+import telnetlib
+
 EMPTY_STRING = ""
 HTTP_EMPTY = 204
 HTTP_BAD_ENTITY = 422
@@ -26,7 +28,40 @@ app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
 app.config["SQLALCHEMY_DATABASE_URI"] = "sqlite:///sqlite.db"
 db = SQLAlchemy(app)
 
+def openvpn_connect():
+
+    host = app.config["VPN_MANAGEMENT_HOST"]
+    port = app.config["VPN_MANAGEMENT_PORT"]
+    password = app.config["VPN_MANAGEMENT_PASSWORD"]
+
+    tn = telnetlib.Telnet(host, port)
+
+    tn.read_until(b"PASSWORD: ")
+    tn.write(password.encode('ascii') + b"\n")
+    tn.read_all()
+
+    return tn
+
+def openvpn_info():
+
+    tn = openvpn_connect()
+    tn.write(b"status\n")
+
+    print(tn.read_all().decode('ascii'))
+
+    tn.close()
+
+def openvpn_force_reconnect_client(client_cn):
+
+    tn = openvpn_connect()
+    tn.write(b"kill {}\n".format(client_cn))
+
+    print(tn.read_all().decode('ascii'))
+
+    tn.close()
+
 def dump_asn1_timestring(dt):
+
     return dt.strftime("%Y%m%d%H%M%SZ")
 
 class CertificateEntry(db.Model):
@@ -442,5 +477,9 @@ if __name__ == "__main__":
 
         app.config["LOAD_MISSING_CERTS_TO_DB"] = True
         app.config["VPN_CONFIG_DIR_PATH"] = "./ccd/"
+
+        app.config["VPN_MANAGEMENT_HOST"] = "localhost"
+        app.config["VPN_MANAGEMENT_PORT"] = 23000
+        app.config["VPN_MANAGEMENT_PASSWORD"] = ""
 
         app.run()
