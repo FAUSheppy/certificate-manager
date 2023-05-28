@@ -28,6 +28,10 @@ app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
 app.config["SQLALCHEMY_DATABASE_URI"] = "sqlite:///sqlite.db"
 db = SQLAlchemy(app)
 
+def create_ca():
+
+    pass
+
 def openvpn_connect():
 
     host = app.config["VPN_MANAGEMENT_HOST"]
