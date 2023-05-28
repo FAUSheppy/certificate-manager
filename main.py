@@ -9,10 +9,12 @@ import datetime
 from sqlalchemy import Column, Integer, String, Boolean, or_, and_, asc, desc
 from flask_sqlalchemy import SQLAlchemy
 
+import flask_wtf
 from flask_wtf import FlaskForm, CSRFProtect
 from wtforms import StringField, SubmitField
 from wtforms.validators import DataRequired, Length
 
+import secrets
 import telnetlib
 
 EMPTY_STRING = ""
@@ -24,13 +26,55 @@ CERT_FORMAT_PATH = "./keys/{}_{}.crt"
 KEY_FORMAT_PATH = "./keys/{}_{}.key"
 
 app = flask.Flask("Certificate Manager")
+CSRFProtect(app)
 app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
 app.config["SQLALCHEMY_DATABASE_URI"] = "sqlite:///sqlite.db"
 db = SQLAlchemy(app)
 
 def create_ca():
 
-    pass
+    if os.path.isfile(app.config["CA_KEY_PATH"]):
+        error = "Refusing to create new CA because key {} already exists"
+        print(error.format(app.config["CA_KEY_PATH"], file=sys.stderr))
+        return
+
+    ca_key = crypto.PKey()
+    ca_key.generate_key(crypto.TYPE_RSA, app.config["CA_KEY_SIZE"])
+    
+    ca_cert = crypto.X509()
+    ca_cert.set_version(2)
+    ca_cert.set_serial_number(0)
+    
+    ca_subj = ca_cert.get_subject()
+    ca_subj.commonName = app.config["CA_NAME"]
+    
+    ca_cert.add_extensions([
+        crypto.X509Extension(b"subjectKeyIdentifier", False, b"hash", subject=ca_cert),
+    ])
+    
+    ca_cert.add_extensions([
+        crypto.X509Extension(b"authorityKeyIdentifier", False, b"keyid:always", issuer=ca_cert),
+    ])
+    
+    ca_cert.add_extensions([
+        crypto.X509Extension(b"basicConstraints", False, b"CA:TRUE"),
+        crypto.X509Extension(b"keyUsage", False, b"keyCertSign, cRLSign"),
+    ])
+    
+    ca_cert.set_issuer(ca_subj)
+    ca_cert.set_pubkey(ca_key)
+    ca_cert.sign(ca_key, 'sha256')
+   
+    # ser expiry #
+    seconds = int(datetime.timedelta(days=10000).total_seconds())
+    ca_cert.gmtime_adj_notBefore(0)
+    ca_cert.gmtime_adj_notAfter(seconds)
+    
+    # save files #
+    with open(app.config["CA_CERT_PATH"], "wb") as f:
+        f.write(crypto.dump_certificate(crypto.FILETYPE_PEM, ca_cert))
+    with open(app.config["CA_KEY_PATH"], "wb") as f:
+        f.write(crypto.dump_privatekey(crypto.FILETYPE_PEM, ca_key))
 
 def openvpn_connect():
 
@@ -238,26 +282,44 @@ def load_ca():
 
     return (ca_key, ca_cert)
 
-@app.route("/create")
-def create_cert():
+class CreateCertForm(FlaskForm):
 
-    if not flask.request.args.get("CN"):
-        return ("Missing CN argument for certicate creation", HTTP_BAD_ENTITY)
+    name = StringField('CN/Name', validators=[DataRequired()])
+    email = StringField('E-Mail')
+    country = StringField('Country')
+    location = StringField('Location')
+    state = StringField('State')
+    org = StringField('Organisation')
+    org_unit = StringField('Organistation Unit')
+
+@app.route("/create-interface", methods=["GET", "POST"])
+def create_interface():
+
+    form = CreateCertForm()
+    if form.validate_on_submit():
+        create_cert(form)
+        return flask.redirect('/')
+    return flask.render_template('create_cert_form.html', form=form)
+
+def create_cert(form):
 
     ca_key, ca_cert = load_ca()
 
     # create a key pair
     key = crypto.PKey()
-    key.generate_key(crypto.TYPE_RSA, 1024)
+    key.generate_key(crypto.TYPE_RSA, app.config["CA_KEY_SIZE"])
 
     # create a CSR
-    CN = flask.request.args.get("CN")
-    C  = flask.request.args.get("DE") or app.config["C_DEFAULT"]
-    ST = flask.request.args.get("ST") or app.config["ST_DEFAULT"]
-    L  = flask.request.args.get("L")  or app.config["L_DEFAULT"]
-    O  = flask.request.args.get("O")  or app.config["O_DEFAULT"]
-    OU = flask.request.args.get("OU") or app.config["OU_DEFAULT"]
-    emailAddress = flask.request.args.get("emailAddress")
+    CN = form.name.data
+    if not CN:
+        raise ValueError("Missing CN for certificate creation")
+
+    C  = form.country.data or app.config["C_DEFAULT"]
+    ST = form.state.data or app.config["ST_DEFAULT"]
+    L  = form.location.data or app.config["L_DEFAULT"]
+    O  = form.org.data or app.config["O_DEFAULT"]
+    OU = form.org_unit.data or app.config["OU_DEFAULT"]
+    emailAddress = form.email.data
 
     req = crypto.X509Req()
     req.get_subject().CN = CN
@@ -456,17 +518,23 @@ def root():
 
     return flask.render_template("index.html", certificates=certificates)
 
-@app.before_first_request
-def init():
+def create_app():
     db.create_all()
+    if app.config["CREATE_CA_IF_NOT_EXISTS"]:
+        create_ca()
+
     if app.config["LOAD_MISSING_CERTS_TO_DB"]:
         load_missing_certificates()
 
 if __name__ == "__main__":
 
+        app.config["CREATE_CA_IF_NOT_EXISTS"] = True
         app.config["CRL_PATH"] = "crl.pem"
         app.config["KEYS_PATH"] = "./keys"
+        app.config["CA_KEY_SIZE"] = 2048
+        app.config["CA_NAME"] = "AtlantisHQv2"
         app.config["CA_KEY_PATH"] = "./keys/ca.key"
+        app.config["CA_CERT_PATH"] = "./keys/ca.crt"
         app.config["CA_CERT_PATH"] = "./keys/ca.crt"
 
         app.config["VPN_SERVER"] = "atlantishq.de"
@@ -482,8 +550,13 @@ if __name__ == "__main__":
         app.config["LOAD_MISSING_CERTS_TO_DB"] = True
         app.config["VPN_CONFIG_DIR_PATH"] = "./ccd/"
 
+        app.config["ENABLE_VPN_CONNECTION"] = False
         app.config["VPN_MANAGEMENT_HOST"] = "localhost"
         app.config["VPN_MANAGEMENT_PORT"] = 23000
         app.config["VPN_MANAGEMENT_PASSWORD"] = ""
 
+        app.config["SECRET_KEY"] = secrets.token_urlsafe(64)
+
+        with app.app_context():
+            create_app()
         app.run()

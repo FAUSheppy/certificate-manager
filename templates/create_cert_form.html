@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="en">
+
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
+  <meta name="author" content="Yannik Schmidt">
+  <link rel="shortcut icon" href="/defaultFavicon.ico">
+
+  <title>Certificate Manager</title>
+
+  <!-- Bootstrap core CSS -->
+  <link href="https://cdn.atlantishq.de/static/css/bootstrap.min.css" rel="stylesheet">
+  <link href="/static/site.css" rel="stylesheet">
+  <script defer src="https://cdn.atlantishq.de/static/js/jquery.min.js"></script>
+  <script defer src="https://cdn.atlantishq.de/static/js/bootstrap.js"></script>
+
+</head>
+<body>
+    <div class="container mt-5">
+        <button class="mt-4 mb-4 btn btn-secondary" onclick="window.location.href='/'">
+            Back
+        </button>
+        {% if form.name.errors %}
+            <ul class="errors">
+            {% for error in form.name.errors %}
+                <li>{{ error }}</li>
+            {% endfor %}
+            </ul>
+        {% endif %}
+        <form method="POST" action="/create-interface">
+            {{ form.csrf_token }}
+            {{ form.name.label }}       {{ form.name(size=20) }}    </br>
+            {{ form.email.label }}      {{ form.email(size=20) }}   </br>
+            {{ form.country.label }}    {{ form.country(size=20) }} </br>
+            {{ form.state.label }}      {{ form.state(size=20) }}   </br>
+            {{ form.location.label }}   {{ form.location(size=20) }}</br>
+            {{ form.org.label }}        {{ form.org(size=20) }}     </br>
+            {{ form.org_unit.label }}   {{ form.org_unit(size=20) }}</br>
+            <input type="submit" value="Go">
+        </form>
+    </div>
+</body>
+</html>
