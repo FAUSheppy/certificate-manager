@@ -9,3 +9,4 @@
 keys/
 ca/
 ccd/
+nginx_maps.j2
