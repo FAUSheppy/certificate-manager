@@ -30,11 +30,9 @@ KEY_FORMAT_PATH = "{}/{}_{}.key"
 app = flask.Flask("Certificate Manager")
 CSRFProtect(app)
 app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
-app.config["SQLALCHEMY_DATABASE_URI"] = "sqlite:///sqlite.db"
+app.config["SQLALCHEMY_DATABASE_URI"] = os.environ.get("SQLITE_LOCATION") or "sqlite:///sqlite.db"
 
-# set different data dir if container #
-if os.environ.get("CERT_MANAGER_USE_DATA_DIR") == "true":
-    app.config["SQLALCHEMY_DATABASE_URI"] = "sqlite:///data/sqlite.db"
+print("Using: {}".format(app.config["SQLALCHEMY_DATABASE_URI"]))
 
 db = SQLAlchemy(app)
 
