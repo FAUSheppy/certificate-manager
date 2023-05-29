@@ -267,8 +267,8 @@ def ovpn():
                     port=port,
                     proto=proto,
                     ca_cert=ca_cert.strip("\n"),
-                    clientCert=str(clientCert, "ascii").strip("\n"),
-                    clientKey=str(clientKey, "ascii").strip("\n"))
+                    client_cert=str(clientCert, "ascii").strip("\n"),
+                    client_key=str(clientKey, "ascii").strip("\n"))
 
     r = flask.Response(text, mimetype="application/octet-stream")
     r.headers["Content-Disposition"] = 'attachment; filename="{}.ovpn"'.format(cert.get("CN"))
