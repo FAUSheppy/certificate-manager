@@ -23,8 +23,8 @@ HTTP_EMPTY = 204
 HTTP_BAD_ENTITY = 422
 HTTP_NOT_FOUND = 404
 
-CERT_FORMAT_PATH = "./keys/{}_{}.crt"
-KEY_FORMAT_PATH = "./keys/{}_{}.key"
+CERT_FORMAT_PATH = "{}/{}_{}.crt"
+KEY_FORMAT_PATH = "{}/{}_{}.key"
 
 app = flask.Flask("Certificate Manager")
 CSRFProtect(app)
@@ -156,7 +156,7 @@ class CertificateEntry(db.Model):
 
     def load_privkey(self):
 
-        with open(KEY_FORMAT_PATH.format(self.name, self.serial)) as f:
+        with open(KEY_FORMAT_PATH.format(app.config["KEYS_PATH"], self.name, self.serial)) as f:
             return crypto.load_privatekey(crypto.FILETYPE_PEM, f.read())
 
 def get_min_serial():
@@ -185,7 +185,7 @@ class Certificate:
             self.entry = get_entry_by_serial(serial)
 
         self.serial = self.entry.serial
-        self.cert_path = CERT_FORMAT_PATH.format(self.entry.name, self.serial)
+        self.cert_path = CERT_FORMAT_PATH.format(app.config["KEYS_PATH"], self.entry.name, self.serial)
 
         with open(self.cert_path) as f:
             self.cert_content = f.read()
@@ -224,7 +224,7 @@ class Certificate:
 
 def load_missing_certificates():
 
-    certs_path = os.path.dirname(CERT_FORMAT_PATH.format(None, None))
+    certs_path = os.path.dirname(CERT_FORMAT_PATH.format(None, None, None))
 
     for path in glob.glob(certs_path + "./*"):
 
@@ -233,8 +233,8 @@ def load_missing_certificates():
             serial = cert.get_serial_number()
             cn = cert.get_subject().get_components()[0].decode()
 
-            if (not os.path.isfile(CERT_FORMAT_PATH.format(cn, serial)) or
-               not os.path.isfile(KEY_FORMAT_PATH(cn, serial))):
+            if (not os.path.isfile(CERT_FORMAT_PATH.format(app.config["KEYS_PATH"], cn, serial)) or
+               not os.path.isfile(KEY_FORMAT_PATH(app.config["KEYS_PATH"], cn, serial))):
                 print("Bad naming scheme '{}' (skipping..)".format(path), file=sys.stderr)
 
             try:
@@ -377,10 +377,10 @@ def create_cert(form):
     # sign the certificate #
     cert = sign_certificate(ca_cert, ca_key, req)
 
-    with open(CERT_FORMAT_PATH.format(CN, cert.get_serial_number()), "wt") as f:
+    with open(CERT_FORMAT_PATH.format(app.config["KEYS_PATH"], CN, cert.get_serial_number()), "wt") as f:
         f.write(str(crypto.dump_certificate(crypto.FILETYPE_PEM, cert), "ascii"))
 
-    with open(KEY_FORMAT_PATH.format(CN, cert.get_serial_number()), "wt") as f:
+    with open(KEY_FORMAT_PATH.format(app.config["KEYS_PATH"], CN, cert.get_serial_number()), "wt") as f:
         f.write(str(crypto.dump_privatekey(crypto.FILETYPE_PEM, key), "ascii"))
 
     db.session.add(CertificateEntry(serial=cert.get_serial_number(), name=CN))
