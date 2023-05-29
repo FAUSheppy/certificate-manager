@@ -31,6 +31,11 @@ app = flask.Flask("Certificate Manager")
 CSRFProtect(app)
 app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
 app.config["SQLALCHEMY_DATABASE_URI"] = "sqlite:///sqlite.db"
+
+# set different data dir if container #
+if os.environ.get("CERT_MANAGER_USE_DATA_DIR") == "true":
+    app.config["SQLALCHEMY_DATABASE_URI"] = "sqlite:///data/sqlite.db"
+
 db = SQLAlchemy(app)
 
 def parse_nginx_maps(subject):
