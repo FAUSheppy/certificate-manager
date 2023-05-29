@@ -440,7 +440,11 @@ def load_crl():
         with open(crl_path) as f:
             crl = crypto.load_crl(crypto.FILETYPE_PEM, f.read())
     else:
+        ca_key, ca_cert = load_ca()
         crl = crypto.CRL()
+        crl.sign(ca_cert, ca_key, b"sha256")
+        with open(app.config["CRL_PATH"], "wb") as f:
+            f.write(crypto.dump_crl(crypto.FILETYPE_PEM, crl))
 
     return crl
 
@@ -602,6 +606,9 @@ def create_app():
 
     if app.config["LOAD_MISSING_CERTS_TO_DB"]:
         load_missing_certificates()
+
+    # create empty CRL if nesseary, openvpn does like an empty file #
+    load_crl()
 
 if __name__ == "__main__":
 
