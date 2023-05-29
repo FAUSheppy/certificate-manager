@@ -406,9 +406,9 @@ def create_cert(form):
     if form.server_auth_allowed.data:
         extended_key_usage += ["serverAuth"]
 
-    extended_key_usage_string = ", ".join(extended_key_usage)
     if any((form.code_signing_allowed.data, form.email_sign_allowed.data, form.server_auth_allowed.data)):
         extended_key_usage += ["clientAuth"]
+        extended_key_usage_string = ", ".join(extended_key_usage)
         x509_exku = crypto.X509Extension(b"extendedKeyUsage", False, extended_key_usage_string.encode("ascii"))
         base_constraints.append(x509_exku)
 
