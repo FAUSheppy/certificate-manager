@@ -438,7 +438,14 @@ def load_crl():
     crl_path = app.config["CRL_PATH"]
     if os.path.isfile(crl_path) and not os.stat(crl_path).st_size == 0:
         with open(crl_path) as f:
-            crl = crypto.load_crl(crypto.FILETYPE_PEM, f.read())
+
+            # so.. this is because of a bug in OpenSSL which prevents empty CRLs from being loaded
+            # in any case, if we can't load the CRL we create a new one
+            try:
+                crl = crypto.load_crl(crypto.FILETYPE_PEM, f.read())
+            except OpenSSL.crypto.Error as e:
+                crl = crl = crypto.CRL()
+
     else:
         ca_key, ca_cert = load_ca()
         crl = crypto.CRL()
