@@ -549,7 +549,10 @@ def root():
     return flask.render_template("index.html", certificates=certificates)
 
 def create_app():
+
+    app.config["SECRET_KEY"] = secrets.token_urlsafe(64)
     db.create_all()
+
     if app.config["CREATE_CA_IF_NOT_EXISTS"]:
         create_ca()
 
@@ -586,8 +589,6 @@ if __name__ == "__main__":
         app.config["VPN_MANAGEMENT_PASSWORD"] = ""
 
         app.config["NGINX_CERT_MAPS_LOCATION"] = "./nginx_maps.j2"
-
-        app.config["SECRET_KEY"] = secrets.token_urlsafe(64)
 
         with app.app_context():
             create_app()

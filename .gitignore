@@ -11,3 +11,5 @@ ca/
 ccd/
 nginx_maps.j2
 *.bak
+data/
+__pycache__/
