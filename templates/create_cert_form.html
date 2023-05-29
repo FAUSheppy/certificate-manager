@@ -37,6 +37,10 @@
             {{ form.location.label }}   {{ form.location(size=20) }}</br>
             {{ form.org.label }}        {{ form.org(size=20) }}     </br>
             {{ form.org_unit.label }}   {{ form.org_unit(size=20) }}</br>
+
+            {{ form.code_signing_allowed.label }} {{ form.code_signing_allowed() }}</br>
+            {{ form.server_auth_allowed.label }}  {{ form.server_auth_allowed() }}</br>
+            {{ form.email_sign_allowed.label }}   {{ form.email_sign_allowed() }}</br>
             <input type="submit" value="Go">
         </form>
     </div>

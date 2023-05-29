@@ -1,4 +1,5 @@
 import OpenSSL
+import asn1
 import re
 from OpenSSL import crypto
 import glob
@@ -12,7 +13,7 @@ from flask_sqlalchemy import SQLAlchemy
 
 import flask_wtf
 from flask_wtf import FlaskForm, CSRFProtect
-from wtforms import StringField, SubmitField
+from wtforms import StringField, SubmitField, BooleanField
 from wtforms.validators import DataRequired, Length
 
 import secrets
@@ -192,6 +193,10 @@ class Certificate:
 
         self.cert = crypto.load_certificate(crypto.FILETYPE_PEM, self.cert_content)
 
+        self.extensions = []
+        for i in range(0, self.cert.get_extension_count()):
+            self.extensions.append(self.cert.get_extension(i))
+
         # load components #
         componentTupelList = list(map(lambda x: (x[0].decode(), x[1].decode()),
                             self.cert.get_subject().get_components()))
@@ -204,6 +209,15 @@ class Certificate:
         }
 
         self.permissions = parse_nginx_maps(self.cert.get_subject())
+
+    def ext_decode(self, ext):
+
+        data = ext.get_data()
+        decoder = asn1.Decoder()
+        decoder.start(data)
+        tag, value = decoder.read()
+        return value.decode("ascii")
+
 
     def get(self, name):
         return self.components.get(name)
@@ -298,6 +312,10 @@ def sign_certificate(ca_cert, ca_key, csr):
     cert.set_issuer(ca_cert.get_subject())
     cert.set_subject(csr.get_subject())
     cert.set_pubkey(csr.get_pubkey())
+    
+    # extensions #
+    cert.add_extensions(csr.get_extensions())
+
     cert.sign(ca_key, 'sha256')
 
     return cert
@@ -321,6 +339,11 @@ class CreateCertForm(FlaskForm):
     state = StringField('State')
     org = StringField('Organisation')
     org_unit = StringField('Organistation Unit')
+
+    code_signing_allowed = BooleanField("Allow signing code")
+    server_auth_allowed  = BooleanField("Allow authentication servers")
+    email_sign_allowed   = BooleanField("Allow S/MIME usage")
+
 
 @app.route("/create-interface", methods=["GET", "POST"])
 def create_interface():
@@ -368,6 +391,23 @@ def create_cert(form):
                 b"Digital Signature, Non Repudiation, Key Encipherment"),
         crypto.X509Extension(b"basicConstraints", False, b"CA:FALSE"),
     ])
+
+    # extened Key usaged extensions #
+    extended_key_usage = []
+    if form.code_signing_allowed.data:
+        extended_key_usage += ["codeSigning"]
+
+    if form.email_sign_allowed.data:
+        extended_key_usage += ["emailProtection"]
+
+    if form.server_auth_allowed.data:
+        extended_key_usage += ["serverAuth"]
+
+    extended_key_usage_string = ", ".join(extended_key_usage)
+    if any((form.code_signing_allowed.data, form.email_sign_allowed.data, form.server_auth_allowed.data)):
+        x509_exku = crypto.X509Extension(b"extendedKeyUsage", False, extended_key_usage_string.encode("ascii"))
+        base_constraints.append(x509_exku)
+
     x509_extensions = base_constraints
     req.add_extensions(x509_extensions)
 
