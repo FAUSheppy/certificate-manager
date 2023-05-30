@@ -1,6 +1,7 @@
 import OpenSSL
 import asn1
 import re
+import threading
 from OpenSSL import crypto
 import glob
 import flask
@@ -35,6 +36,7 @@ app.config["SQLALCHEMY_DATABASE_URI"] = os.environ.get("SQLITE_LOCATION") or "sq
 print("Using: {}".format(app.config["SQLALCHEMY_DATABASE_URI"]))
 
 db = SQLAlchemy(app)
+telnet_lock = threading.Semaphore()
 
 def parse_nginx_maps(subject):
 
@@ -114,31 +116,109 @@ def openvpn_connect():
     port = app.config["VPN_MANAGEMENT_PORT"]
     password = app.config["VPN_MANAGEMENT_PASSWORD"]
 
-    tn = telnetlib.Telnet(host, port)
-
-    tn.read_until(b"PASSWORD: ")
+    tn = telnetlib.Telnet(host, port, timeout=3)
+    tn.read_until(b"PASSWORD:", timeout=3)
     tn.write(password.encode('ascii') + b"\n")
-    tn.read_all()
+    connection_success = b"INFO:OpenVPN Management Interface Version 3 -- type 'help' for more info"
+    tn.read_until(connection_success, timeout=3)
 
     return tn
 
+def openvpn_close_safe(tn):
+
+    try:
+        tn.close()
+    except ValueError as e:
+        print("{} - connection already closed".format(e))
+
+class ClientInfo:
+
+    def __init__(self, cn, ext_ip, rx, tx, connected_since):
+
+        self.cn = cn
+        self.ext_ip = ext_ip
+        self.rx = rx
+        self.tx = tx
+        self.connected_since = connected_since
+
+        # set by routing table #
+        self.ip = None
+
+    def format(self):
+        return "{cn} connected as {ip} from {ext_ip} since {since}".format(
+                    cn=self.cn, ip=self.ip, ext_ip=self.ext_ip, since=self.connected_since)
+
 def openvpn_info():
 
-    tn = openvpn_connect()
-    tn.write(b"status\n")
+    clients = dict()
 
-    print(tn.read_all().decode('ascii'))
+    with telnet_lock:
+        tn = openvpn_connect()
+        tn.write(b"status\n")
+        result = tn.read_until(b"END").decode('ascii')
+        tn.write(b"quit\n")
 
-    tn.close()
+        print(result)
+
+        section = None
+        SECTION_ROUTING_TABLE = "Virtual Address,Common Name,Real Address,Last Ref"
+        SECTION_CLIENT_LIST = "Common Name,Real Address,Bytes Received,Bytes Sent,Connected Since"
+
+        for line in result.split("\n"):
+            line = line.strip()
+
+            # determine section #
+            if line == SECTION_ROUTING_TABLE:
+                section = "RT"
+                continue
+            elif line == SECTION_CLIENT_LIST:
+                section = "CL"
+                continue
+            elif not section:
+                continue
+
+            try:
+                # read CL #
+                if section == "CL":
+                    cn, ext_ip, rx, tx, connected_since = line.split(",")
+                    client = ClientInfo(cn, ext_ip, rx, tx, connected_since)
+                    clients.update({ cn : client })
+
+                # read RT #
+                elif section == "RT":
+                    ip, cn, real, last_ref = line.split(",")
+                    clients[cn].ip = ip
+            except ValueError:
+                continue
+
+    openvpn_close_safe(tn)
+    return clients
 
 def openvpn_force_reconnect_client(client_cn):
 
-    tn = openvpn_connect()
-    tn.write(b"kill {}\n".format(client_cn))
+    with telnet_lock:
+        tn = openvpn_connect()
+        tn.write("kill {}\n".format(client_cn).encode("ascii"))
+        result = tn.read_until(b"END", timeout=1).decode('ascii')
+        tn.write(b"quit\n")
 
-    print(tn.read_all().decode('ascii'))
+        string = None
+        success = False
+        for line in result.split("\n"):
+            if not line.strip():
+                continue
+            elif "CLIENT:ENV" in line.strip():
+                string = "Command conflicted with incoming connection"
+            elif "ERROR" in line:
+                string = line.strip()
+            elif "SUCCESS" in line:
+                string = line.strip()
+                success = True
+            else:
+                string = "Unexpected response from OpenVPN: {}".format(line)
 
-    tn.close()
+        openvpn_close_safe(tn)
+        return (string or "No response from OpenVPN.", success)
 
 def dump_asn1_timestring(dt):
 
@@ -524,7 +604,17 @@ def cert_info():
     checkedDict["vpn_allow_internal"] = "checked" if cert.entry.vpn_allow_internal else ""
     checkedDict["vpn_allow_outgoing"] = "checked" if cert.entry.vpn_allow_outgoing else ""
 
-    return flask.render_template("cert_info.html", cert=cert, checked=checkedDict)
+    openvpn_client_info = dict()
+    if app.config["ENABLE_VPN_CONNECTION"]:
+        try:
+            openvpn_client_info = openvpn_info()
+        except ConnectionRefusedError:
+            print("Warning: Connection Refused for OpenVPN", file=sys.stderr)
+        except EOFError as e:
+            print("Warning: EOF from OpenVPN", file=sys.stderr)
+
+    return flask.render_template("cert_info.html", cert=cert, checked=checkedDict,
+                                    vpn_client_info=openvpn_client_info.get(cert.entry.name))
 
 @app.route("/vpn")
 def vpn():

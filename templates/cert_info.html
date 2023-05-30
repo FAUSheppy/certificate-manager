@@ -108,6 +108,13 @@
             {% endfor %}
             </p>
           </div>
+          <div class="py-3 row">
+            <p style="color: orange;">
+            {% if vpn_client_info %}
+				{{ vpn_client_info.format() }}
+			{% endif %}
+            </p>
+          </div>
 		  <div class="row">
             <div class="vpn-info mt-4">
                 <input {{ checked["vpn_enabled"] }} id="vpn_enabled" class="vpn-config" type=checkbox><i class="pl-2">Enable VPN Access (can only access server/first ip of subnet)</i></input>
