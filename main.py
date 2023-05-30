@@ -21,6 +21,7 @@ import secrets
 import telnetlib
 
 EMPTY_STRING = ""
+HTTP_OK = 200
 HTTP_EMPTY = 204
 HTTP_BAD_ENTITY = 422
 HTTP_NOT_FOUND = 404
@@ -157,8 +158,6 @@ def openvpn_info():
         tn.write(b"status\n")
         result = tn.read_until(b"END").decode('ascii')
         tn.write(b"quit\n")
-
-        print(result)
 
         section = None
         SECTION_ROUTING_TABLE = "Virtual Address,Common Name,Real Address,Last Ref"
@@ -580,7 +579,8 @@ def revoke():
     with open(app.config["CRL_PATH"], "wb") as f:
         f.write(crypto.dump_crl(crypto.FILETYPE_PEM, crl))
 
-    return (EMPTY_STRING, HTTP_EMPTY)
+    string, success = openvpn_force_reconnect_client(cert.entry.name)
+    return (string, HTTP_OK)
 
 @app.route("/cert-info")
 def cert_info():
@@ -683,7 +683,9 @@ def vpn():
 
     db.session.merge(cert.entry)
     db.session.commit()
-    return (EMPTY_STRING, HTTP_EMPTY)
+    
+    string, success = openvpn_force_reconnect_client(cert.entry.name)
+    return (string, 200)
     
 @app.route("/")
 def root():
