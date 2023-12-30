@@ -1,19 +1,15 @@
-FROM python:3.9-slim-bookworm
+FROM alpine
 
-RUN apt update
-RUN apt install python3-pip -y
-RUN python3 -m pip install --upgrade pip
-RUN apt install curl -y
-RUN apt autoremove -y
-RUN apt clean
+RUN apk add --no-cache py3-pip
+RUN apk add --no-cache curl
 
 WORKDIR /app
 COPY ./ .
 
-RUN python3 -m pip install waitress
+RUN python3 -m pip install --break-system-packages --no-cache-dir waitress
 
 COPY req.txt .
-RUN python3 -m pip install --no-cache-dir -r req.txt
+RUN python3 -m pip install --break-system-packages --no-cache-dir -r req.txt
 
 EXPOSE 5000/tcp
 
