@@ -5,7 +5,7 @@ remote {{ server }} {{ port }}
 resolv-retry infinite
 nobind
 
-dev-type tun
+dev-type tap
 
 user nobody
 group nogroup
@@ -30,7 +30,4 @@ persist-tun
 </key>
 
 remote-cert-tls server
-
-data-ciphers AES-256-CBC
-data-ciphers-fallback AES-256-CBC
 auth SHA512
