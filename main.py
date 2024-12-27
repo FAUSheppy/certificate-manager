@@ -101,7 +101,7 @@ def create_ca():
     ca_cert.sign(ca_key, 'sha256')
    
     # ser expiry #
-    seconds = int(datetime.timedelta(days=10000).total_seconds())
+    seconds = int(datetime.timedelta(days=app.config["CERT_EXPIRY_DAYS"]).total_seconds())
     ca_cert.gmtime_adj_notBefore(0)
     ca_cert.gmtime_adj_notAfter(seconds)
     
@@ -599,7 +599,12 @@ def cert_info():
 
     # precompute cause jinja
     checkedDict = dict()
-    checkedDict["vpn_enabled"]        = "checked" if cert.entry.vpn                else ""
+
+    if cert.entry.vpn or app.config["ENABLE_VPN_ACCESS_BY_DEFAULT"]:
+        checkedDict["vpn_enabled"] = "checked"
+    else:
+        checkedDict["vpn_enabled"] = "checked"
+
     checkedDict["vpn_routed"]         = "checked" if cert.entry.vpn_routed         else ""
     checkedDict["vpn_allow_internal"] = "checked" if cert.entry.vpn_allow_internal else ""
     checkedDict["vpn_allow_outgoing"] = "checked" if cert.entry.vpn_allow_outgoing else ""
@@ -671,8 +676,10 @@ def vpn():
         if serial >= 50:
             raise NotImplementedError("Currenly only 50 certificates are supported for VPN")
        
-        ipv4_format = "ifconfig-push 172.16.1.{} 255.255.255.0".format(base_ip + serial)
-        ipv6_format = "ifconfig-ipv6-push fd2a:aef:608:1::{}/64".format(base_ip + serial + 1000)
+        ipv4_format = "ifconfig-push {}.{} 255.255.255.0".format(
+                        app.config["IPV4_SUBNET"], base_ip + serial)
+        ipv6_format = "ifconfig-ipv6-push fd2a:aef:608:{}::{}/64".format(
+                        app.config["IPV6_SUBNET_NR"], base_ip + serial + 1000)
 
         print("Setting IP as {}".format(ipv4_format))
 
@@ -698,6 +705,44 @@ def root():
 def create_app():
 
     app.config["SECRET_KEY"] = secrets.token_urlsafe(64)
+    app.config["ENABLE_VPN_ACCESS_BY_DEFAULT"] = os.environ.get("ENABLE_VPN_ACCESS_BY_DEFAULT")
+    app.config["CERT_EXPIRY_DAYS"] = int(os.environ.get("CERT_EXPIRY_DAYS")) or 365
+    app.config["IPV4_SUBNET"] = os.environ.get("IPV4_SUBNET")                or "172.16.1"
+    app.config["IPV6_SUBNET_NR"] = os.environ.get("IPV6_SUBNET_NR")          or 1
+
+    app.config["CREATE_CA_IF_NOT_EXISTS"] = os.environ.get("CREATE_CA_IF_NOT_EXISTS")
+    app.config["CRL_PATH"] = os.environ.get("CRL_PATH")             or "crl.pem"
+    app.config["KEYS_PATH"] = os.environ.get("KEYS_PATH")           or "./keys"
+    app.config["CA_KEY_SIZE"] = int(os.environ.get("CA_KEY_SIZE"))  or 2048
+    app.config["CA_NAME"] = os.environ.get("CA_NAME")               or "AtlantisHQv2"
+    app.config["CA_KEY_PATH"] = os.environ.get("CA_KEY_PATH")       or "./keys/ca.key"
+    app.config["CA_CERT_PATH"] = os.environ.get("CA_CERT_PATH")     or "./keys/ca.crt"
+
+    print(os.path.isdir(app.config["KEYS_PATH"]), os.path.exists(app.config["KEYS_PATH"]), file=sys.stderr)
+    if not os.path.isdir(app.config["KEYS_PATH"]):
+        print("KEYS_PATH ({}) is not accessible".format(app.config["KEYS_PATH"]), file=sys.stderr)
+        sys.exit(1)
+
+    app.config["VPN_SERVER"] = os.environ.get("VPN_SERVER")  or "atlantishq.de"
+    app.config["VPN_PORT"] = int(os.environ.get("VPN_PORT")) or 7012
+    app.config["VPN_PROTO"] = os.environ.get("VPN_PROTO")    or "tcp"
+
+    app.config["C_DEFAULT"] = os.environ.get("C_DEFAULT")    or "DE"
+    app.config["L_DEFAULT"] = os.environ.get("L_DEFAULT")    or "Bavaria"
+    app.config["ST_DEFAULT"] = os.environ.get("ST_DEFAULT")  or "Erlangen"
+    app.config["O_DEFAULT"] = os.environ.get("O_DEFAULT")    or "AtlantisHQ"
+    app.config["OU_DEFAULT"] = os.environ.get("OU_DEFAULT")  or "Sheppy"
+
+    app.config["VPN_CONFIG_DIR_PATH"] = os.environ.get("VPN_CONFIG_DIR") or "./ccd/"
+    app.config["LOAD_MISSING_CERTS_TO_DB"] = os.environ.get("LOAD_MISSING_CERTS_TO_DB")
+
+    app.config["ENABLE_VPN_CONNECTION"] = os.environ.get("VPN_MANAGEMENT_ENABLE")
+    app.config["VPN_MANAGEMENT_HOST"] = os.environ.get("VPN_MANAGEMENT_HOST") or "localhost"
+    app.config["VPN_MANAGEMENT_PORT"] = os.environ.get("VPN_MANAGEMENT_PORT") or 23000
+    app.config["VPN_MANAGEMENT_PASSWORD"] = os.environ.get("VPN_MANAGEMENT_PASSWORD") or ""
+
+    app.config["NGINX_CERT_MAPS_LOCATION"] = os.environ.get("NGINX_CERT_MAPS_LOCATION") or "./nginx_maps.j2"
+
     db.create_all()
 
     if app.config["CREATE_CA_IF_NOT_EXISTS"]:
@@ -711,35 +756,7 @@ def create_app():
 
 if __name__ == "__main__":
 
-        app.config["CREATE_CA_IF_NOT_EXISTS"] = True
-        app.config["CRL_PATH"] = "crl.pem"
-        app.config["KEYS_PATH"] = "./keys"
-        app.config["CA_KEY_SIZE"] = 2048
-        app.config["CA_NAME"] = "AtlantisHQv2"
-        app.config["CA_KEY_PATH"] = "./keys/ca.key"
-        app.config["CA_CERT_PATH"] = "./keys/ca.crt"
-        app.config["CA_CERT_PATH"] = "./keys/ca.crt"
-
-        app.config["VPN_SERVER"] = "atlantishq.de"
-        app.config["VPN_PORT"] = 7012
-        app.config["VPN_PROTO"] = "tcp"
-
-        app.config["C_DEFAULT"] = "DE"
-        app.config["L_DEFAULT"] = "Bavaria"
-        app.config["ST_DEFAULT"] = "Erlangen"
-        app.config["O_DEFAULT"] = "AtlantisHQ"
-        app.config["OU_DEFAULT"] = "Sheppy"
-
-        app.config["LOAD_MISSING_CERTS_TO_DB"] = True
-        app.config["VPN_CONFIG_DIR_PATH"] = "./ccd/"
-
-        app.config["ENABLE_VPN_CONNECTION"] = False
-        app.config["VPN_MANAGEMENT_HOST"] = "localhost"
-        app.config["VPN_MANAGEMENT_PORT"] = 23000
-        app.config["VPN_MANAGEMENT_PASSWORD"] = ""
-
-        app.config["NGINX_CERT_MAPS_LOCATION"] = "./nginx_maps.j2"
-
         with app.app_context():
             create_app()
+
         app.run()

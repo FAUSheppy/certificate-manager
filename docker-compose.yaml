@@ -1,0 +1,32 @@
+services:
+  certificate-manager:
+    image: test
+    ports:
+        - 5000:5000
+    environment:
+        - SQLITE_LOCATION=sqlite:////app/sqlite.db
+        - CA_KEY_SIZE=2048
+        - CA_NAME=NAME_FOR_YOUR_CA
+        - CRL_PATH=./crl.pem
+        - KEYS_PATH=/
+        - CA_KEY_PATH=./ca.key
+        - CA_CERT_PATH=./ca.crt
+        - CA_CERT_PATH=./ca.crt
+        - C_DEFAULT=DE
+        - L_DEFAULT=REGION
+        - ST_DEFAULT=CITY
+        - O_DEFAULT=ORGANIZATION
+        - OU_DEFAULT=ORG_UNIT
+        - SQLALCHEMY_DATABASE_URI=sqlite:///./sqlite.db
+        - CREATE_CA_IF_NOT_EXISTS=1
+        - CERT_EXPIRY_DAYS=365
+        - LOAD_MISSING_CERTS_TO_DB=1
+        - VPN_CONFIG_DIR_PATH=./client-config-dir/
+        - ENABLE_VPN_CONNECTION=1
+        - VPN_MANAGEMENT_HOST=host.docker.internal
+        - VPN_MANAGEMENT_PORT=23000
+        - VPN_MANAGEMENT_PASSWORD=password
+        - NGINX_CERT_MAPS_LOCATION=./nginx_maps.j2
+        - VPN_SERVER=atlantishq.de
+        - VPN_PORT=7000
+        - VPN_PROTO=tcp

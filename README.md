@@ -1,3 +1,24 @@
+# Environment Variables
+The following variables are loaded:
+
+| ENV                           | Description                |
+| ----------------------------- | -------------------------- |
+| ENABLE_VPN_ACCESS_BY_DEFAULT  | Enable access of newly generated certs to VPN by default (by creating the ccd file for the respective user) (default: no) |
+| CERT_EXPIRY_DAYS              | Number of days any certificate should be valid (default: 365) |
+| IPV4_SUBNET                   | IPv6 Subnet to use for VPN without last part or dot (e.g. 172.16.1, but no final base ip) |
+| IPV6_SUBNET_NR                | IPv6 Subnet number to append to ULA (default 1) |
+| VPN_MANAGEMENT_ENABLE         | Enable connection to VPN Management Interface (default: no) |
+| VPN_MANAGEMENT_HOST           | Host for VPN Management Interface (default: localhost) |
+| VPN_MANAGEMENT_PORT           | Port for VPN Management Interface (default: 23000) |
+| VPN_MANAGEMENT_PASSWORD       | Password for VPN Management Interface (default: '') |
+| VPN_SERVER                    | Name or DNS of VPN Server (default: atlantishq.de) |
+| VPN_PORT                      | Port of VPN Server (default: 7000) |
+| VPN_PROTO                     | Protocol of VPN Server (default: tcp) |
+| VPN_CONFIG_DIR                | Client config dir location (ccd) for VPN (default: ./ccd/) |
+| CREATE_CA_IF_NOT_EXISTS       | Create a new CA if there is no current one (default: no) |
+| CA_NAME                       | Name of the Signing CA if it is newly created |
+| LOAD_MISSING_CERTS_TO_DB      | Load any existing certificates in the data dir into the database. If this is not set, certificates will be overwritten and are not available in the web-interface (default: yes) |
+
 # OpenVPN CCD-Integration
 Create a client-config-dir for your server by adding the `client-config-dir /path/to/ccd/from/cert-manager` and and `ccd-exclusive' options to your openvpn-server configuration.
 

@@ -6,6 +6,7 @@ RUN apk add --no-cache curl
 WORKDIR /app
 COPY ./ .
 
+ENV PIP_ROOT_USER_ACTION=ignore
 RUN python3 -m pip install --break-system-packages --no-cache-dir waitress
 
 COPY req.txt .
