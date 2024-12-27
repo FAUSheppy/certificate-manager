@@ -195,6 +195,9 @@ def openvpn_info():
 
 def openvpn_force_reconnect_client(client_cn):
 
+    if not app.config["ENABLE_VPN_CONNECTION"]:
+        return ("", True)
+
     with telnet_lock:
         tn = openvpn_connect()
         tn.write("kill {}\n".format(client_cn).encode("ascii"))
@@ -362,7 +365,7 @@ def ovpn():
                     server=server,
                     port=port,
                     proto=proto,
-                    dev_type=app.config["VPN_DEV_TYPE"]
+                    dev_type=app.config["VPN_DEV_TYPE"],
                     ca_cert=ca_cert.strip("\n"),
                     client_cert=str(clientCert, "ascii").strip("\n"),
                     client_key=str(clientKey, "ascii").strip("\n"))
@@ -554,6 +557,10 @@ def revoke():
     serial = flask.request.args.get("serial")
     reason = flask.request.args.get("reason") or "unspecified"
 
+    cert = db.session.query(CertificateEntry).filter(CertificateEntry.serial==serial).first()
+    if not cert:
+        return ("Refusing to revoke serial that is not in db", 404)
+
     ca_key, ca_cert = load_ca()
     crl = load_crl()
 
@@ -580,7 +587,7 @@ def revoke():
     with open(app.config["CRL_PATH"], "wb") as f:
         f.write(crypto.dump_crl(crypto.FILETYPE_PEM, crl))
 
-    string, success = openvpn_force_reconnect_client(cert.entry.name)
+    string, success = openvpn_force_reconnect_client(cert.name)
     return (string, HTTP_OK)
 
 @app.route("/cert-info")
