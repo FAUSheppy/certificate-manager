@@ -5,7 +5,7 @@ remote {{ server }} {{ port }}
 resolv-retry infinite
 nobind
 
-dev-type tap
+dev-type {{ dev_type }}
 
 user nobody
 group nogroup

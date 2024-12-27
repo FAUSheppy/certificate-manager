@@ -29,4 +29,5 @@ services:
         - NGINX_CERT_MAPS_LOCATION=./nginx_maps.j2
         - VPN_SERVER=atlantishq.de
         - VPN_PORT=7000
+        - VPN_DEV_TYPE=tun
         - VPN_PROTO=tcp

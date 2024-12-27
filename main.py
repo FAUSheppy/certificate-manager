@@ -362,6 +362,7 @@ def ovpn():
                     server=server,
                     port=port,
                     proto=proto,
+                    dev_type=app.config["VPN_DEV_TYPE"]
                     ca_cert=ca_cert.strip("\n"),
                     client_cert=str(clientCert, "ascii").strip("\n"),
                     client_key=str(clientKey, "ascii").strip("\n"))
@@ -726,6 +727,7 @@ def create_app():
     app.config["VPN_SERVER"] = os.environ.get("VPN_SERVER")  or "atlantishq.de"
     app.config["VPN_PORT"] = int(os.environ.get("VPN_PORT")) or 7012
     app.config["VPN_PROTO"] = os.environ.get("VPN_PROTO")    or "tcp"
+    app.config["VPN_PROTO"] = os.environ.get("VPN_DEV_TYPE") or "tun"
 
     app.config["C_DEFAULT"] = os.environ.get("C_DEFAULT")    or "DE"
     app.config["L_DEFAULT"] = os.environ.get("L_DEFAULT")    or "Bavaria"

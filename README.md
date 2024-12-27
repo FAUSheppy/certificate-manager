@@ -14,6 +14,7 @@ The following variables are loaded:
 | VPN_SERVER                    | Name or DNS of VPN Server (default: atlantishq.de) |
 | VPN_PORT                      | Port of VPN Server (default: 7000) |
 | VPN_PROTO                     | Protocol of VPN Server (default: tcp) |
+| VPN_DEV_TYPE                  | Device type (tun or tap) of VPN Server (default: tun) |
 | VPN_CONFIG_DIR                | Client config dir location (ccd) for VPN (default: ./ccd/) |
 | CREATE_CA_IF_NOT_EXISTS       | Create a new CA if there is no current one (default: no) |
 | CA_NAME                       | Name of the Signing CA if it is newly created |
