@@ -22,7 +22,7 @@ services:
         - CERT_EXPIRY_DAYS=365
         - LOAD_MISSING_CERTS_TO_DB=1
         - VPN_CONFIG_DIR_PATH=./client-config-dir/
-        - ENABLE_VPN_CONNECTION=1
+        - ENABLE_VPN_CONNECTION=0
         - VPN_MANAGEMENT_HOST=host.docker.internal
         - VPN_MANAGEMENT_PORT=23000
         - VPN_MANAGEMENT_PASSWORD=password
