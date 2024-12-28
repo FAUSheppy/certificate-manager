@@ -30,7 +30,7 @@ CERT_FORMAT_PATH = "{}/{}_{}.crt"
 KEY_FORMAT_PATH = "{}/{}_{}.key"
 
 app = flask.Flask("Certificate Manager")
-CSRFProtect(app)
+csrf = CSRFProtect(app)
 app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
 app.config["SQLALCHEMY_DATABASE_URI"] = os.environ.get("SQLITE_LOCATION") or "sqlite:///sqlite.db"
 
@@ -271,7 +271,8 @@ class Certificate:
             self.entry = get_entry_by_serial(serial)
 
         self.serial = self.entry.serial
-        self.cert_path = CERT_FORMAT_PATH.format(app.config["KEYS_PATH"], self.entry.name, self.serial)
+        keys_path = app.config["KEYS_PATH"]
+        self.cert_path = CERT_FORMAT_PATH.format(keys_path, self.entry.name, self.serial)
 
         with open(self.cert_path) as f:
             self.cert_content = f.read()
@@ -345,11 +346,8 @@ def load_missing_certificates():
                 db.add(entry)
                 db.commit()
 
-@app.route("/openvpn")
-def ovpn():
-
-    serial = flask.request.args.get("serial")
-    cert = Certificate(serial)
+def render_ovpn_config(cert):
+    '''Return a rendered OVPN as a string'''
 
     server = app.config["VPN_SERVER"]
     port = app.config["VPN_PORT"]
@@ -370,12 +368,26 @@ def ovpn():
                     client_cert=str(clientCert, "ascii").strip("\n"),
                     client_key=str(clientKey, "ascii").strip("\n"))
 
-    r = flask.Response(text, mimetype="application/octet-stream")
+    return text
+
+@app.route("/openvpn")
+def ovpn():
+
+    if not check_api_key():
+        return ("API Key Configured & Your Key was wrong", 403)
+
+    serial = flask.request.args.get("serial")
+    cert = Certificate(serial)
+
+    r = flask.Response(render_ovpn_config(cert), mimetype="application/octet-stream")
     r.headers["Content-Disposition"] = 'attachment; filename="{}.ovpn"'.format(cert.get("CN"))
     return r
 
 @app.route("/pk12")
 def browser_cert():
+
+    if not check_api_key():
+        return ("API Key Configured & Your Key was wrong", 403)
 
     serial = flask.request.args.get("serial")
     tmp_pw = flask.request.args.get("tmp_pw").encode("ascii")
@@ -406,6 +418,16 @@ def sign_certificate(ca_cert, ca_key, csr):
 
     return cert
 
+def check_api_key():
+
+    api_key = flask.request.args.get("api-key")
+    if not app.config["API_KEY"]:
+        return True
+    elif api_key and api_key == app.config["API_KEY"]:
+        return True
+    else:
+        return False
+
 def load_ca():
 
     with open(app.config["CA_KEY_PATH"]) as f:
@@ -433,6 +455,10 @@ class CreateCertForm(FlaskForm):
 
 @app.route("/create-interface", methods=["GET", "POST"])
 def create_interface():
+    '''Webpage with form and Submission Endpoint for creating new certificates/users'''
+
+    if not check_api_key():
+        return ("API Key Configured & Your Key was wrong", 403)
 
     form = CreateCertForm()
     if form.validate_on_submit():
@@ -440,7 +466,24 @@ def create_interface():
         return flask.redirect('/')
     return flask.render_template('create_cert_form.html', form=form)
 
-def create_cert(form):
+@csrf.exempt
+@app.route("/api-create-cert", methods=["POST"])
+def api_create_cert():
+    '''Create a new cert and retrive a openvpn config for it based on a static API-key'''
+
+    api_key = flask.request.args.get("api-key")
+    if not app.config["API_KEY"]:
+        return ("API Key is not configured on the server", 403)
+
+    if api_key and api_key == app.config["API_KEY"]:
+        cert_entry = create_cert(form=None, payload=flask.request.json, return_cert_obj=True)
+        cert = Certificate(cert_entry.serial)
+        return render_ovpn_config(cert)
+    else:
+        return ("Invalid or missing api-key URL parameter", 403)
+
+
+def create_cert(form, payload=None, return_cert_obj=False):
 
     ca_key, ca_cert = load_ca()
 
@@ -449,16 +492,32 @@ def create_cert(form):
     key.generate_key(crypto.TYPE_RSA, app.config["CA_KEY_SIZE"])
 
     # create a CSR
-    CN = form.name.data
+    if payload and form:
+
+        raise AssertionError("Must only pass 'form' or 'payload'")
+
+    elif payload:
+
+        CN = payload.get("name")
+        C  = payload.get("country")         or app.config["C_DEFAULT"]
+        ST = payload.get("state")           or app.config["ST_DEFAULT"]
+        L  = payload.get("location")        or app.config["L_DEFAULT"]
+        O  = payload.get("org")             or app.config["O_DEFAULT"]
+        OU = payload.get("org_unit")        or app.config["OU_DEFAULT"]
+        emailAddress = payload.get("email") or ""
+
+    else:
+
+        CN = form.name.data
+        C  = form.country.data          or app.config["C_DEFAULT"]
+        ST = form.state.data            or app.config["ST_DEFAULT"]
+        L  = form.location.data         or app.config["L_DEFAULT"]
+        O  = form.org.data              or app.config["O_DEFAULT"]
+        OU = form.org_unit.data         or app.config["OU_DEFAULT"]
+        emailAddress = form.email.data  or ""
+
     if not CN:
         raise ValueError("Missing CN for certificate creation")
-
-    C  = form.country.data or app.config["C_DEFAULT"]
-    ST = form.state.data or app.config["ST_DEFAULT"]
-    L  = form.location.data or app.config["L_DEFAULT"]
-    O  = form.org.data or app.config["O_DEFAULT"]
-    OU = form.org_unit.data or app.config["OU_DEFAULT"]
-    emailAddress = form.email.data
 
     req = crypto.X509Req()
     req.get_subject().CN = CN
@@ -480,19 +539,22 @@ def create_cert(form):
 
     # extened Key usaged extensions #
     extended_key_usage = []
-    if form.code_signing_allowed.data:
+    if form and form.code_signing_allowed.data:
         extended_key_usage += ["codeSigning"]
 
-    if form.email_sign_allowed.data:
+    if form and form.email_sign_allowed.data:
         extended_key_usage += ["emailProtection"]
 
-    if form.server_auth_allowed.data:
+    if form and form.server_auth_allowed.data:
         extended_key_usage += ["serverAuth"]
 
-    if any((form.code_signing_allowed.data, form.email_sign_allowed.data, form.server_auth_allowed.data)):
+    if form and any((form.code_signing_allowed.data,
+                form.email_sign_allowed.data, form.server_auth_allowed.data)):
+
         extended_key_usage += ["clientAuth"]
         extended_key_usage_string = ", ".join(extended_key_usage)
-        x509_exku = crypto.X509Extension(b"extendedKeyUsage", False, extended_key_usage_string.encode("ascii"))
+        x509_exku = crypto.X509Extension(b"extendedKeyUsage", False, 
+                                            extended_key_usage_string.encode("ascii"))
         base_constraints.append(x509_exku)
 
     x509_extensions = base_constraints
@@ -504,16 +566,22 @@ def create_cert(form):
     # sign the certificate #
     cert = sign_certificate(ca_cert, ca_key, req)
 
-    with open(CERT_FORMAT_PATH.format(app.config["KEYS_PATH"], CN, cert.get_serial_number()), "wt") as f:
+    keys_path = app.config["KEYS_PATH"]
+    serial = cert.get_serial_number()
+    with open(CERT_FORMAT_PATH.format(keys_path, CN, serial), "wt") as f:
         f.write(str(crypto.dump_certificate(crypto.FILETYPE_PEM, cert), "ascii"))
 
-    with open(KEY_FORMAT_PATH.format(app.config["KEYS_PATH"], CN, cert.get_serial_number()), "wt") as f:
+    with open(KEY_FORMAT_PATH.format(keys_path, CN, serial), "wt") as f:
         f.write(str(crypto.dump_privatekey(crypto.FILETYPE_PEM, key), "ascii"))
 
-    db.session.add(CertificateEntry(serial=cert.get_serial_number(), name=CN))
+    cert_obj = CertificateEntry(serial=cert.get_serial_number(), name=CN)
+    db.session.add(cert_obj)
     db.session.commit()
 
-    return (EMPTY_STRING, HTTP_EMPTY)
+    if return_cert_obj:
+        return cert_obj
+    else:
+        return (EMPTY_STRING, HTTP_EMPTY)
 
 
 def load_crl():
@@ -554,6 +622,9 @@ def is_serial_revoked(serial, crl=None):
 @app.route("/revoke")
 def revoke():
 
+    if not check_api_key():
+        return ("API Key Configured & Your Key was wrong", 403)
+
     serial = flask.request.args.get("serial")
     reason = flask.request.args.get("reason") or "unspecified"
 
@@ -593,6 +664,9 @@ def revoke():
 @app.route("/cert-info")
 def cert_info():
 
+    if not check_api_key():
+        return ("API Key Configured & Your Key was wrong", 403)
+
     # get serial number
     serial = flask.request.args.get("serial")
     if not serial:
@@ -631,6 +705,9 @@ def cert_info():
 
 @app.route("/vpn")
 def vpn():
+
+    if not check_api_key():
+        return ("API Key Configured & Your Key was wrong", 403)
 
     serial = flask.request.args.get("serial")
     if not serial:
@@ -705,6 +782,9 @@ def vpn():
 @app.route("/")
 def root():
 
+    if not check_api_key():
+        return ("API Key Configured & Your Key was wrong", 403)
+
     certificates = [ Certificate(serial=-1, entry=entry)
                         for entry in db.session.query(CertificateEntry).all() ]
 
@@ -726,7 +806,6 @@ def create_app():
     app.config["CA_KEY_PATH"] = os.environ.get("CA_KEY_PATH")       or "./keys/ca.key"
     app.config["CA_CERT_PATH"] = os.environ.get("CA_CERT_PATH")     or "./keys/ca.crt"
 
-    print(os.path.isdir(app.config["KEYS_PATH"]), os.path.exists(app.config["KEYS_PATH"]), file=sys.stderr)
     if not os.path.isdir(app.config["KEYS_PATH"]):
         print("KEYS_PATH ({}) is not accessible".format(app.config["KEYS_PATH"]), file=sys.stderr)
         sys.exit(1)
@@ -734,7 +813,9 @@ def create_app():
     app.config["VPN_SERVER"] = os.environ.get("VPN_SERVER")  or "atlantishq.de"
     app.config["VPN_PORT"] = int(os.environ.get("VPN_PORT")) or 7012
     app.config["VPN_PROTO"] = os.environ.get("VPN_PROTO")    or "tcp"
-    app.config["VPN_PROTO"] = os.environ.get("VPN_DEV_TYPE") or "tun"
+    app.config["VPN_DEV_TYPE"] = os.environ.get("VPN_DEV_TYPE") or "tun"
+
+    app.config["API_KEY"] = os.environ.get("API_KEY") or None
 
     app.config["C_DEFAULT"] = os.environ.get("C_DEFAULT")    or "DE"
     app.config["L_DEFAULT"] = os.environ.get("L_DEFAULT")    or "Bavaria"

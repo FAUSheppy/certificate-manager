@@ -19,6 +19,7 @@ The following variables are loaded:
 | CREATE_CA_IF_NOT_EXISTS       | Create a new CA if there is no current one (default: no) |
 | CA_NAME                       | Name of the Signing CA if it is newly created |
 | LOAD_MISSING_CERTS_TO_DB      | Load any existing certificates in the data dir into the database. If this is not set, certificates will be overwritten and are not available in the web-interface (default: yes) |
+| API_KEY                       | Static api-key for retriving openvpn certs via API, only needed if you want to get certs without using the browser (default: None [deactivated]) |
 
 # OpenVPN CCD-Integration
 Create a client-config-dir for your server by adding the `client-config-dir /path/to/ccd/from/cert-manager` and and `ccd-exclusive' options to your openvpn-server configuration.

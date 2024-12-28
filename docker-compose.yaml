@@ -31,3 +31,4 @@ services:
         - VPN_PORT=7000
         - VPN_DEV_TYPE=tun
         - VPN_PROTO=tcp
+        - API_KEY=secret
