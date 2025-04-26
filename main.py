@@ -825,6 +825,8 @@ def create_app():
     app.config["OU_DEFAULT"] = os.environ.get("OU_DEFAULT")  or "Sheppy"
 
     app.config["VPN_CONFIG_DIR_PATH"] = os.environ.get("VPN_CONFIG_DIR_PATH") or "./ccd/"
+    os.makedirs(app.config["VPN_CONFIG_DIR_PATH"], exist_ok=True)
+
     app.config["LOAD_MISSING_CERTS_TO_DB"] = os.environ.get("LOAD_MISSING_CERTS_TO_DB")
 
     app.config["ENABLE_VPN_CONNECTION"] = os.environ.get("VPN_MANAGEMENT_ENABLE")
