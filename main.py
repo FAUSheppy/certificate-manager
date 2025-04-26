@@ -807,8 +807,9 @@ def create_app():
     app.config["CA_CERT_PATH"] = os.environ.get("CA_CERT_PATH")     or "./keys/ca.crt"
 
     if not os.path.isdir(app.config["KEYS_PATH"]):
-        print("KEYS_PATH ({}) is not accessible".format(app.config["KEYS_PATH"]), file=sys.stderr)
-        sys.exit(1)
+        os.makedir(app.config["KEYS_PATH"])
+        #print("KEYS_PATH ({}) is not accessible".format(app.config["KEYS_PATH"]), file=sys.stderr)
+        #sys.exit(1)
 
     app.config["VPN_SERVER"] = os.environ.get("VPN_SERVER")  or "atlantishq.de"
     app.config["VPN_PORT"] = int(os.environ.get("VPN_PORT")) or 7012
